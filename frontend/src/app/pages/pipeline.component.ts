@@ -1,0 +1,153 @@
+import { CommonModule } from '@angular/common';
+import { Component, OnInit } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { ApiService, ApplicationRecord } from '../services/api.service';
+
+interface StatusDef {
+  key: string;
+  label: string;
+}
+
+@Component({
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  template: `
+    <section class="page">
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">Tracker</p>
+          <h1>Pipeline</h1>
+        </div>
+        <button class="btn-primary" type="button" (click)="load()">Refresh</button>
+      </div>
+
+      <section class="pipeline-board">
+        <div class="pipeline-col" *ngFor="let status of statuses">
+          <h2>{{ status.label }}</h2>
+          <article class="application-card" *ngFor="let app of byStatus(status.key)" (click)="select(app)">
+            <strong>{{ app.job_detail.title }}</strong>
+            <p>{{ app.job_detail.company || 'Unknown company' }}</p>
+            <span class="status-chip">{{ app.job_detail.match?.score || 0 }} fit</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel" *ngIf="selected">
+        <div class="panel-head">
+          <div>
+            <h2>{{ selected.job_detail.title }}</h2>
+            <p>{{ selected.job_detail.company || 'Unknown company' }} · {{ selected.job_detail.location || 'Location unknown' }}</p>
+          </div>
+          <span class="fit-badge">{{ selected.job_detail.match?.score || 0 }}</span>
+        </div>
+
+        <div class="edit-grid">
+          <label>
+            Status
+            <select [(ngModel)]="selected.status" name="status">
+              <option *ngFor="let status of statuses" [value]="status.key">{{ status.label }}</option>
+            </select>
+          </label>
+          <label>
+            Follow-up
+            <input type="datetime-local" [(ngModel)]="followUpLocal" name="followUpLocal">
+          </label>
+          <label>
+            Contact name
+            <input [(ngModel)]="selected.contact_name" name="contactName">
+          </label>
+          <label>
+            Contact email
+            <input [(ngModel)]="selected.contact_email" name="contactEmail">
+          </label>
+        </div>
+
+        <label>
+          Notes
+          <textarea rows="5" [(ngModel)]="selected.notes" name="notes"></textarea>
+        </label>
+
+        <div class="action-row">
+          <button class="btn-primary" type="button" (click)="saveSelected()">Save</button>
+          <span class="muted">{{ message }}</span>
+        </div>
+
+        <h3>Activity</h3>
+        <div class="list-row" *ngFor="let event of selected.events">
+          <div>
+            <strong>{{ event.event_type }}</strong>
+            <p>{{ event.notes }} · {{ event.happened_at | date:'short' }}</p>
+          </div>
+        </div>
+      </section>
+    </section>
+  `,
+})
+export class PipelineComponent implements OnInit {
+  applications: ApplicationRecord[] = [];
+  selected?: ApplicationRecord;
+  followUpLocal = '';
+  message = '';
+  statuses: StatusDef[] = [
+    { key: 'discovered', label: 'Discovered' },
+    { key: 'saved', label: 'Saved' },
+    { key: 'resume_ready', label: 'Resume Ready' },
+    { key: 'applied', label: 'Applied' },
+    { key: 'follow_up_due', label: 'Follow-Up Due' },
+    { key: 'recruiter_screen', label: 'Recruiter Screen' },
+    { key: 'technical_screen', label: 'Technical Screen' },
+    { key: 'onsite_final', label: 'Onsite / Final' },
+    { key: 'offer', label: 'Offer' },
+    { key: 'rejected', label: 'Rejected' },
+  ];
+
+  constructor(private api: ApiService) {}
+
+  ngOnInit(): void {
+    this.load();
+  }
+
+  load(): void {
+    this.api.applications().subscribe((page) => {
+      this.applications = page.results;
+      if (this.selected) {
+        this.selected = this.applications.find((item) => item.id === this.selected?.id);
+        this.syncFollowUpLocal();
+      }
+    });
+  }
+
+  byStatus(status: string): ApplicationRecord[] {
+    return this.applications.filter((app) => app.status === status);
+  }
+
+  select(application: ApplicationRecord): void {
+    this.selected = application;
+    this.syncFollowUpLocal();
+  }
+
+  syncFollowUpLocal(): void {
+    if (!this.selected?.follow_up_at) {
+      this.followUpLocal = '';
+      return;
+    }
+    this.followUpLocal = this.selected.follow_up_at.slice(0, 16);
+  }
+
+  saveSelected(): void {
+    if (!this.selected) return;
+    const payload: Partial<ApplicationRecord> = {
+      status: this.selected.status,
+      notes: this.selected.notes,
+      contact_name: this.selected.contact_name,
+      contact_email: this.selected.contact_email,
+      follow_up_at: this.followUpLocal ? new Date(this.followUpLocal).toISOString() : null,
+    };
+    this.api.updateApplication(this.selected.id, payload).subscribe((updated) => {
+      this.message = 'Application saved.';
+      this.selected = updated;
+      this.syncFollowUpLocal();
+      this.load();
+    });
+  }
+}

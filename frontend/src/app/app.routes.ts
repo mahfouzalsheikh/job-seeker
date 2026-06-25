@@ -1,0 +1,28 @@
+import { Routes } from '@angular/router';
+import { LoginComponent } from './pages/login.component';
+import { DashboardComponent } from './pages/dashboard.component';
+import { ProfileComponent } from './pages/profile.component';
+import { MatchesComponent } from './pages/matches.component';
+import { ResumeLabComponent } from './pages/resume-lab.component';
+import { PipelineComponent } from './pages/pipeline.component';
+import { SourcesComponent } from './pages/sources.component';
+import { StrategyComponent } from './pages/strategy.component';
+import { ArtifactsComponent } from './pages/artifacts.component';
+import { SettingsComponent } from './pages/settings.component';
+import { authGuard } from './services/auth.guard';
+
+export const routes: Routes = [
+  { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
+  { path: 'login', component: LoginComponent },
+  { path: 'dashboard', component: DashboardComponent, canActivate: [authGuard] },
+  { path: 'profile', component: ProfileComponent, canActivate: [authGuard] },
+  { path: 'matches', component: MatchesComponent, canActivate: [authGuard] },
+  { path: 'resume-lab', component: ResumeLabComponent, canActivate: [authGuard] },
+  { path: 'pipeline', component: PipelineComponent, canActivate: [authGuard] },
+  { path: 'sources', component: SourcesComponent, canActivate: [authGuard] },
+  { path: 'strategy', component: StrategyComponent, canActivate: [authGuard] },
+  { path: 'artifacts', component: ArtifactsComponent, canActivate: [authGuard] },
+  { path: 'settings', component: SettingsComponent, canActivate: [authGuard] },
+  { path: '**', redirectTo: 'dashboard' },
+];
+
