@@ -9,19 +9,35 @@ import { AuthService } from '../services/auth.service';
   imports: [CommonModule, FormsModule],
   template: `
     <main class="auth-page">
+      <section class="auth-story">
+        <div class="auth-brand"><span class="brand-mark">JS</span><strong>Job Search Studio</strong></div>
+        <div class="auth-story-copy">
+          <p class="eyebrow">A calmer way to job search</p>
+          <h1>Turn your experience into your next opportunity.</h1>
+          <p>Organize your career story, find stronger matches, and create focused application materials in one private workspace.</p>
+          <div class="auth-benefits">
+            <div><span>✓</span><p><strong>Evidence-first profile</strong><small>Keep every claim grounded in your real experience.</small></p></div>
+            <div><span>✓</span><p><strong>Clear fit signals</strong><small>Understand strengths and gaps before you apply.</small></p></div>
+            <div><span>✓</span><p><strong>One organized pipeline</strong><small>Stay on top of applications and follow-ups.</small></p></div>
+          </div>
+        </div>
+        <p class="auth-footnote">Private by design · Your data stays in your workspace</p>
+      </section>
       <section class="auth-panel">
-        <h1>Job Search Studio</h1>
-        <p>Sign in with your Django user account.</p>
+        <div class="mobile-auth-brand"><span class="brand-mark">JS</span><strong>Job Search Studio</strong></div>
+        <p class="eyebrow">Welcome back</p>
+        <h2>Sign in to your workspace</h2>
+        <p class="auth-subtitle">Pick up where you left off.</p>
         <form (ngSubmit)="login()">
           <label>
             Username
-            <input name="username" [(ngModel)]="username" autocomplete="username">
+            <input name="username" [(ngModel)]="username" autocomplete="username" placeholder="Your username">
           </label>
           <label>
             Password
-            <input name="password" type="password" [(ngModel)]="password" autocomplete="current-password">
+            <input name="password" type="password" [(ngModel)]="password" autocomplete="current-password" placeholder="Your password">
           </label>
-          <button class="btn-primary" type="submit" [disabled]="loading">Login</button>
+          <button class="btn-primary auth-submit" type="submit" [disabled]="loading">{{ loading ? 'Signing in…' : 'Sign in' }}</button>
           <p class="error" *ngIf="error">{{ error }}</p>
         </form>
       </section>
@@ -51,4 +67,3 @@ export class LoginComponent {
     });
   }
 }
-

@@ -12,41 +12,33 @@ import { ApiService, JobPosting, Resume } from '../services/api.service';
         <div>
           <p class="eyebrow">Application Materials</p>
           <h1>Resume Lab</h1>
+          <p class="page-intro">Create evidence-backed resumes, review claim risks, and export polished drafts.</p>
         </div>
-        <button class="btn-primary" type="button" (click)="load()">Refresh</button>
+        <button class="btn-primary" type="button" (click)="activeTab = 'tailor'">✦ Tailor a resume</button>
       </div>
 
-      <div class="two-col">
-        <section class="panel">
-          <h2>Create Canonical Resume</h2>
-          <label>
-            Title
-            <input [(ngModel)]="newTitle" name="newTitle">
-          </label>
-          <label>
-            Markdown
-            <textarea rows="10" [(ngModel)]="newMarkdown" name="newMarkdown"></textarea>
-          </label>
-          <button class="btn-primary" type="button" (click)="createCanonical()">Save Canonical</button>
-          <p class="muted">{{ message }}</p>
-        </section>
-
-        <section class="panel">
-          <h2>Generate Tailored Resume</h2>
-          <label>
-            Target job
-            <select [(ngModel)]="targetJobId" name="targetJobId">
-              <option [ngValue]="null">Select a job</option>
-              <option *ngFor="let job of jobs" [ngValue]="job.id">{{ job.title }} · {{ job.company }}</option>
-            </select>
-          </label>
-          <button class="btn-primary" type="button" (click)="tailor()" [disabled]="!targetJobId">Generate Draft</button>
-        </section>
+      <div class="tabs" role="tablist" aria-label="Resume Lab sections">
+        <button type="button" role="tab" [class.active]="activeTab === 'library'" [attr.aria-selected]="activeTab === 'library'" (click)="activeTab = 'library'">Resume library <span>{{ resumes.length }}</span></button>
+        <button type="button" role="tab" [class.active]="activeTab === 'create'" [attr.aria-selected]="activeTab === 'create'" (click)="activeTab = 'create'">Canonical resume</button>
+        <button type="button" role="tab" [class.active]="activeTab === 'tailor'" [attr.aria-selected]="activeTab === 'tailor'" (click)="activeTab = 'tailor'">Tailored draft</button>
       </div>
 
-      <div class="workspace-grid">
+      <section class="panel focused-form" *ngIf="activeTab === 'create'">
+        <div class="panel-head"><div><h2>Create a canonical resume</h2><p>This becomes the trusted base for future tailored versions.</p></div></div>
+        <label>Resume title<input [(ngModel)]="newTitle" name="newTitle" placeholder="Canonical Resume"></label>
+        <label>Resume content <span class="field-hint">Markdown supported</span><textarea rows="18" [(ngModel)]="newMarkdown" name="newMarkdown" placeholder="Paste or write your master resume…"></textarea></label>
+        <div class="action-row form-actions"><button class="btn-primary" type="button" (click)="createCanonical()" [disabled]="!newMarkdown.trim()">Save canonical resume</button><button class="btn-secondary" type="button" (click)="activeTab = 'library'">Cancel</button><p class="muted" *ngIf="message">{{ message }}</p></div>
+      </section>
+
+      <section class="panel focused-form" *ngIf="activeTab === 'tailor'">
+        <div class="generation-hero"><span class="generation-icon">✦</span><div><h2>Generate a tailored draft</h2><p>Select a target role. The studio uses your canonical resume and verified evidence to produce a focused version.</p></div></div>
+        <label>Target opportunity<select [(ngModel)]="targetJobId" name="targetJobId"><option [ngValue]="null">Choose a job from your matches</option><option *ngFor="let job of jobs" [ngValue]="job.id">{{ job.title }} · {{ job.company }}</option></select></label>
+        <div class="action-row form-actions"><button class="btn-primary" type="button" (click)="tailor()" [disabled]="!targetJobId">Generate tailored draft</button><button class="btn-secondary" type="button" (click)="activeTab = 'library'">Cancel</button><p class="muted" *ngIf="message">{{ message }}</p></div>
+      </section>
+
+      <div class="workspace-grid" *ngIf="activeTab === 'library'">
         <section class="panel">
-          <h2>Resumes</h2>
+          <div class="panel-head"><div><h2>Saved resumes</h2><p>{{ resumes.length }} versions</p></div><button class="icon-button" type="button" (click)="load()" aria-label="Refresh resumes">↻</button></div>
           <button
             class="job-row"
             type="button"
@@ -55,10 +47,11 @@ import { ApiService, JobPosting, Resume } from '../services/api.service';
             (click)="selected = resume">
             <span>
               <strong>{{ resume.title }}</strong>
-              <small>{{ resume.kind }} · {{ resume.target_job_title || 'no target' }}</small>
+              <small>{{ resume.kind }} · {{ resume.target_job_title || 'Master version' }}</small>
             </span>
             <span class="status-chip" [class.good]="resume.approved">{{ resume.approved ? 'approved' : 'draft' }}</span>
           </button>
+          <div class="empty-state small" *ngIf="!resumes.length"><span class="empty-icon">▤</span><h3>No resumes yet</h3><p>Create a canonical resume to get started.</p><button class="btn-primary" type="button" (click)="activeTab = 'create'">Create resume</button></div>
         </section>
 
         <section class="panel detail-panel" *ngIf="selected">
@@ -67,7 +60,7 @@ import { ApiService, JobPosting, Resume } from '../services/api.service';
               <h2>{{ selected.title }}</h2>
               <p>{{ selected.kind }} · {{ selected.target_job_title || 'Canonical' }}</p>
             </div>
-            <span class="status-chip" [class.good]="selected.approved">{{ selected.approved ? 'approved' : 'draft' }}</span>
+            <span class="status-chip" [class.good]="selected.approved">{{ selected.approved ? 'Approved' : 'Draft' }}</span>
           </div>
 
           <div class="validation-grid">
@@ -85,17 +78,18 @@ import { ApiService, JobPosting, Resume } from '../services/api.service';
             </div>
           </div>
 
-          <h3>Risk Notes</h3>
+          <h3>Review notes</h3>
           <div class="chip-row">
             <span class="status-chip warn" *ngFor="let note of selected.validation?.risk_notes || []">{{ note }}</span>
+            <span class="muted" *ngIf="!(selected.validation?.risk_notes || []).length">No risk notes detected.</span>
           </div>
 
           <h3>Resume Markdown</h3>
           <pre class="resume-preview">{{ selected.content_markdown }}</pre>
 
           <div class="action-row">
-            <button class="btn-primary" type="button" (click)="approve(selected)" *ngIf="!selected.approved">Approve</button>
-            <button class="btn-secondary" type="button" (click)="download(selected)">Export Markdown</button>
+            <button class="btn-primary" type="button" (click)="approve(selected)" *ngIf="!selected.approved">✓ Approve draft</button>
+            <button class="btn-secondary" type="button" (click)="download(selected)">↓ Export markdown</button>
           </div>
         </section>
       </div>
@@ -110,6 +104,7 @@ export class ResumeLabComponent implements OnInit {
   newTitle = 'Canonical Resume';
   newMarkdown = '';
   message = '';
+  activeTab: 'library' | 'create' | 'tailor' = 'library';
 
   constructor(private api: ApiService) {}
 
@@ -136,6 +131,7 @@ export class ResumeLabComponent implements OnInit {
     }).subscribe((resume) => {
       this.message = 'Canonical resume saved.';
       this.selected = resume;
+      this.activeTab = 'library';
       this.load();
     });
   }
@@ -146,6 +142,7 @@ export class ResumeLabComponent implements OnInit {
     this.api.tailorResume(this.targetJobId).subscribe((resume) => {
       this.message = 'Tailored resume created.';
       this.selected = resume;
+      this.activeTab = 'library';
       this.load();
     });
   }
@@ -168,4 +165,3 @@ export class ResumeLabComponent implements OnInit {
     });
   }
 }
-

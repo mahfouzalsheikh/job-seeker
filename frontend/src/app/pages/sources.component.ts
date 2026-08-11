@@ -12,13 +12,14 @@ import { ApiService, JobSource } from '../services/api.service';
         <div>
           <p class="eyebrow">Discovery</p>
           <h1>Sources</h1>
+          <p class="page-intro">Manage where opportunities enter your workspace.</p>
         </div>
-        <button class="btn-primary" type="button" (click)="load()">Refresh</button>
+        <button class="btn-secondary" type="button" (click)="load()">↻ Refresh</button>
       </div>
 
       <div class="two-col">
         <section class="panel">
-          <h2>Add Source</h2>
+          <div class="panel-head"><div><h2>Add a source</h2><p>Connect a channel for discovering opportunities.</p></div></div>
           <label>
             Name
             <input [(ngModel)]="name" name="name">
@@ -34,22 +35,24 @@ import { ApiService, JobSource } from '../services/api.service';
             </select>
           </label>
           <label>
-            Config JSON
+            Configuration <span class="field-hint">JSON</span>
             <textarea rows="7" [(ngModel)]="configText" name="configText"></textarea>
           </label>
-          <button class="btn-primary" type="button" (click)="create()">Save Source</button>
+          <button class="btn-primary" type="button" (click)="create()">Save source</button>
           <p class="muted">{{ message }}</p>
         </section>
 
         <section class="panel">
-          <h2>Configured Sources</h2>
+          <div class="panel-head"><div><h2>Configured sources</h2><p>{{ sources.length }} discovery channels</p></div></div>
           <div class="list-row" *ngFor="let source of sources">
-            <div>
+            <span class="document-icon">⌁</span>
+            <div class="list-row-main">
               <strong>{{ source.name }}</strong>
               <p>{{ source.kind }} · {{ source.job_count || 0 }} jobs · {{ source.last_message || 'not run yet' }}</p>
             </div>
             <button class="btn-mini" type="button" (click)="run(source)">Run</button>
           </div>
+          <div class="empty-state small" *ngIf="!sources.length"><span class="empty-icon">⌁</span><h3>No sources configured</h3><p>Add your first source to organize job discovery.</p></div>
         </section>
       </div>
     </section>
@@ -96,4 +99,3 @@ export class SourcesComponent implements OnInit {
     });
   }
 }
-

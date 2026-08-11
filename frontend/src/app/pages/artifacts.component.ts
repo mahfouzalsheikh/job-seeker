@@ -11,19 +11,17 @@ import { RouterLink } from '@angular/router';
         <div>
           <p class="eyebrow">Outputs</p>
           <h1>Artifacts</h1>
+          <p class="page-intro">Keep polished resumes and future application assets organized.</p>
         </div>
         <a class="btn-primary" routerLink="/resume-lab">Open Resume Lab</a>
       </div>
 
-      <section class="panel">
-        <h2>Artifact Library</h2>
-        <p>
-          The MVP stores resume markdown exports through Resume Lab. The backend artifact model and API are ready
-          for PDF, DOCX, cover letter, recruiter message, and interview-prep files.
-        </p>
+      <section class="panel empty-state artifact-empty">
+        <span class="empty-icon">□</span><p class="eyebrow">Artifact library</p><h2>Your finished materials will live here</h2>
+        <p>Export reviewed resume drafts from Resume Lab. Support for cover letters, recruiter messages, and interview prep is ready to grow with your workflow.</p>
+        <a class="btn-primary" routerLink="/resume-lab">Create a resume →</a>
       </section>
     </section>
   `,
 })
 export class ArtifactsComponent {}
-

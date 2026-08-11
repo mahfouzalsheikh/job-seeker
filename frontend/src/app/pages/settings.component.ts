@@ -10,11 +10,12 @@ import { Component } from '@angular/core';
         <div>
           <p class="eyebrow">System</p>
           <h1>Settings</h1>
+          <p class="page-intro">Review your private workspace configuration and connected services.</p>
         </div>
       </div>
 
       <section class="panel">
-        <h2>Runtime</h2>
+        <div class="panel-head"><div><h2>Workspace runtime</h2><p>Core services powering Job Search Studio.</p></div><span class="status-chip good">● All systems ready</span></div>
         <div class="settings-grid">
           <div><span>Backend</span><strong>Django / DRF</strong></div>
           <div><span>Async</span><strong>Celery / Redis</strong></div>
@@ -26,4 +27,3 @@ import { Component } from '@angular/core';
   `,
 })
 export class SettingsComponent {}
-

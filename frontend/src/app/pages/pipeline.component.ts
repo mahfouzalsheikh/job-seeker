@@ -17,28 +17,31 @@ interface StatusDef {
         <div>
           <p class="eyebrow">Tracker</p>
           <h1>Pipeline</h1>
+          <p class="page-intro">Keep every opportunity, follow-up, and conversation moving forward.</p>
         </div>
-        <button class="btn-primary" type="button" (click)="load()">Refresh</button>
+        <button class="btn-secondary" type="button" (click)="load()">↻ Refresh</button>
       </div>
 
-      <section class="pipeline-board">
+      <div class="board-toolbar"><div><strong>{{ applications.length }} opportunities</strong><span>Scroll horizontally to see every stage</span></div><span class="status-chip good">● Live pipeline</span></div>
+      <section class="pipeline-board" aria-label="Application pipeline">
         <div class="pipeline-col" *ngFor="let status of statuses">
-          <h2>{{ status.label }}</h2>
-          <article class="application-card" *ngFor="let app of byStatus(status.key)" (click)="select(app)">
+          <div class="pipeline-col-head"><h2>{{ status.label }}</h2><span>{{ byStatus(status.key).length }}</span></div>
+          <button class="application-card" type="button" *ngFor="let app of byStatus(status.key)" [class.selected]="selected?.id === app.id" (click)="select(app)">
             <strong>{{ app.job_detail.title }}</strong>
             <p>{{ app.job_detail.company || 'Unknown company' }}</p>
-            <span class="status-chip">{{ app.job_detail.match?.score || 0 }} fit</span>
-          </article>
+            <div class="card-line"><span class="status-chip">{{ app.job_detail.match?.score || 0 }} fit</span><span class="card-arrow">→</span></div>
+          </button>
+          <div class="column-empty" *ngIf="!byStatus(status.key).length">No applications</div>
         </div>
       </section>
 
-      <section class="panel" *ngIf="selected">
+      <section class="panel application-detail" *ngIf="selected">
         <div class="panel-head">
           <div>
             <h2>{{ selected.job_detail.title }}</h2>
             <p>{{ selected.job_detail.company || 'Unknown company' }} · {{ selected.job_detail.location || 'Location unknown' }}</p>
           </div>
-          <span class="fit-badge">{{ selected.job_detail.match?.score || 0 }}</span>
+          <span class="fit-badge">{{ selected.job_detail.match?.score || 0 }}<small>fit</small></span>
         </div>
 
         <div class="edit-grid">
@@ -72,12 +75,15 @@ interface StatusDef {
           <span class="muted">{{ message }}</span>
         </div>
 
-        <h3>Activity</h3>
-        <div class="list-row" *ngFor="let event of selected.events">
-          <div>
+        <div class="section-divider"><span>Activity</span></div>
+        <div class="timeline">
+          <div class="timeline-item" *ngFor="let event of selected.events">
+            <span class="timeline-dot"></span><div>
             <strong>{{ event.event_type }}</strong>
             <p>{{ event.notes }} · {{ event.happened_at | date:'short' }}</p>
+            </div>
           </div>
+          <p class="muted" *ngIf="!selected.events.length">No activity recorded yet.</p>
         </div>
       </section>
     </section>

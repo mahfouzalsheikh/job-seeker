@@ -14,56 +14,29 @@ import { RealtimeService } from '../services/realtime.service';
         <div>
           <p class="eyebrow">Knowledge Base</p>
           <h1>Profile</h1>
+          <p class="page-intro">Build a trusted library of career evidence for matching and tailored resumes.</p>
         </div>
-        <button class="btn-primary" type="button" (click)="load()">Refresh</button>
+        <button class="btn-secondary" type="button" (click)="load()">↻ Refresh</button>
       </div>
 
-      <div class="two-col">
-        <section class="panel">
-          <h2>Add Source Material</h2>
-          <form class="stack" (ngSubmit)="createDocument()">
-            <label>
-              Type
-              <select name="kind" [(ngModel)]="kind">
-                <option value="resume">Resume</option>
-                <option value="note">Note</option>
-                <option value="conversation">Conversation</option>
-                <option value="project">Project</option>
-                <option value="review">Review</option>
-              </select>
-            </label>
-            <label>
-              Title
-              <input name="title" [(ngModel)]="title">
-            </label>
-            <label>
-              File
-              <input type="file" (change)="onFile($event)">
-            </label>
-            <label>
-              Raw text
-              <textarea name="rawText" rows="10" [(ngModel)]="rawText"></textarea>
-            </label>
-            <button class="btn-primary" type="submit">Ingest</button>
-            <p class="muted">{{ message }}</p>
-          </form>
-        </section>
-
-        <section class="panel">
-          <h2>Documents</h2>
-          <div class="list-row" *ngFor="let document of documents">
-            <div>
-              <strong>{{ document.title }}</strong>
-              <p>{{ document.kind }} · {{ document.status }} · {{ document.status_message }}</p>
-            </div>
-          </div>
-        </section>
+      <div class="summary-strip">
+        <div><span>Profile facts</span><strong>{{ facts.length }}</strong></div>
+        <div><span>Verified</span><strong>{{ verifiedCount() }}</strong></div>
+        <div><span>Source documents</span><strong>{{ documents.length }}</strong></div>
       </div>
 
-      <section class="panel">
+      <div class="tabs" role="tablist" aria-label="Profile sections">
+        <button type="button" role="tab" [class.active]="activeTab === 'facts'" [attr.aria-selected]="activeTab === 'facts'" (click)="activeTab = 'facts'">Profile facts <span>{{ facts.length }}</span></button>
+        <button type="button" role="tab" [class.active]="activeTab === 'sources'" [attr.aria-selected]="activeTab === 'sources'" (click)="activeTab = 'sources'">Source material <span>{{ documents.length }}</span></button>
+      </div>
+
+      <section class="panel" *ngIf="activeTab === 'facts'">
         <div class="panel-head">
-          <h2>Profile Facts</h2>
-          <input class="compact-input" placeholder="Search facts" [(ngModel)]="factSearch" (keyup.enter)="loadFacts()">
+          <div>
+            <h2>Career evidence</h2>
+            <p>Review extracted details and verify anything you want the studio to prioritize.</p>
+          </div>
+          <div class="search-field"><span>⌕</span><input class="compact-input" aria-label="Search facts" placeholder="Search facts" [(ngModel)]="factSearch" (input)="loadFacts()"></div>
         </div>
         <div class="fact-grid">
           <article class="fact-card" *ngFor="let fact of facts">
@@ -111,7 +84,7 @@ import { RealtimeService } from '../services/realtime.service';
               </div>
               <h3>{{ fact.title }}</h3>
               <p>{{ fact.statement }}</p>
-              <small>{{ fact.source_document_title }}</small>
+              <small *ngIf="fact.source_document_title">From {{ fact.source_document_title }}</small>
               <div class="action-row">
                 <button class="btn-mini" type="button" *ngIf="!fact.verified_by_user" (click)="verify(fact)">Verify</button>
                 <button class="btn-mini" type="button" (click)="editFact(fact)">Edit</button>
@@ -120,7 +93,47 @@ import { RealtimeService } from '../services/realtime.service';
             </ng-template>
           </article>
         </div>
+        <div class="empty-state" *ngIf="!facts.length">
+          <span class="empty-icon">◎</span>
+          <h3>No profile facts yet</h3>
+          <p>Add source material and the studio will extract reusable career evidence.</p>
+          <button class="btn-primary" type="button" (click)="activeTab = 'sources'">Add source material</button>
+        </div>
       </section>
+
+      <div class="two-col profile-source-grid" *ngIf="activeTab === 'sources'">
+        <section class="panel">
+          <div class="panel-head compact-heading">
+            <div><span class="section-icon">＋</span><h2>Add source material</h2></div>
+          </div>
+          <p class="section-copy">Upload a resume or paste notes, reviews, and project details.</p>
+          <form class="stack" (ngSubmit)="createDocument()">
+            <div class="edit-grid">
+              <label>Type
+                <select name="kind" [(ngModel)]="kind">
+                  <option value="resume">Resume</option><option value="note">Note</option><option value="conversation">Conversation</option><option value="project">Project</option><option value="review">Review</option>
+                </select>
+              </label>
+              <label>Title<input name="title" [(ngModel)]="title" placeholder="e.g. 2026 master resume"></label>
+            </div>
+            <label class="file-drop">Upload a file<input type="file" (change)="onFile($event)"><span>PDF, DOCX, or plain text</span></label>
+            <label>Or paste text<textarea name="rawText" rows="9" [(ngModel)]="rawText" placeholder="Paste resume content, accomplishments, feedback, or project notes…"></textarea></label>
+            <div class="action-row form-actions"><button class="btn-primary" type="submit">Extract profile facts</button><p class="muted" *ngIf="message">{{ message }}</p></div>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><h2>Source documents</h2><p>Your ingestion history and current processing status.</p></div></div>
+          <div class="document-list">
+            <div class="list-row" *ngFor="let document of documents">
+              <span class="document-icon">{{ document.kind === 'resume' ? 'CV' : 'TXT' }}</span>
+              <div class="list-row-main"><strong>{{ document.title }}</strong><p>{{ document.kind }} · {{ document.status_message }}</p></div>
+              <span class="status-chip" [class.good]="document.status === 'ready'">{{ document.status }}</span>
+            </div>
+          </div>
+          <div class="empty-state small" *ngIf="!documents.length"><span class="empty-icon">□</span><h3>No source documents</h3><p>Your uploaded material will appear here.</p></div>
+        </section>
+      </div>
     </section>
   `,
 })
@@ -134,6 +147,7 @@ export class ProfileComponent implements OnInit, OnDestroy {
   rawText = '';
   factSearch = '';
   message = '';
+  activeTab: 'facts' | 'sources' = 'facts';
   editingFactId: number | null = null;
   factDraft: Partial<ProfileFact> = {};
   private file?: File;
@@ -162,6 +176,10 @@ export class ProfileComponent implements OnInit, OnDestroy {
   loadFacts(): void {
     const params: Record<string, string> = this.factSearch ? { search: this.factSearch } : {};
     this.api.facts(params).subscribe((page) => this.facts = page.results);
+  }
+
+  verifiedCount(): number {
+    return this.facts.filter((fact) => fact.verified_by_user).length;
   }
 
   onFile(event: Event): void {

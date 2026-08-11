@@ -11,32 +11,50 @@ import { RealtimeService, RealtimeStatus } from './services/realtime.service';
   imports: [CommonModule, RouterOutlet, RouterLink],
   template: `
     <div class="app-shell" *ngIf="auth.hasSession(); else authOnly">
-      <aside class="side-nav">
+      <header class="mobile-header">
+        <a class="mobile-brand" routerLink="/dashboard" (click)="closeNav()">
+          <span class="brand-mark">JS</span>
+          <span>Job Search Studio</span>
+        </a>
+        <button class="menu-toggle" type="button" (click)="navOpen = !navOpen" [attr.aria-expanded]="navOpen" aria-label="Toggle navigation">
+          <span></span><span></span><span></span>
+        </button>
+      </header>
+
+      <button class="nav-backdrop" type="button" *ngIf="navOpen" (click)="closeNav()" aria-label="Close navigation"></button>
+
+      <aside class="side-nav" [class.open]="navOpen">
         <div class="side-nav-head">
-          <a class="brand" routerLink="/dashboard">Job Search Studio</a>
-          <span class="socket-status" [class.connected]="socketStatus === 'connected'" [title]="socketStatus">
-            <span></span>
-          </span>
+          <a class="brand" routerLink="/dashboard" (click)="closeNav()">
+            <span class="brand-mark">JS</span>
+            <span class="brand-copy"><strong>Job Search</strong><small>Studio</small></span>
+          </a>
+          <button class="nav-close" type="button" (click)="closeNav()" aria-label="Close navigation">×</button>
         </div>
 
         <nav class="side-nav-main" aria-label="Primary">
-          <a routerLink="/dashboard" [class.active]="active('/dashboard')">Dashboard</a>
-          <a routerLink="/profile" [class.active]="active('/profile')">Profile</a>
-          <a routerLink="/matches" [class.active]="active('/matches')">Matches</a>
-          <a routerLink="/resume-lab" [class.active]="active('/resume-lab')">Resume Lab</a>
-          <a routerLink="/pipeline" [class.active]="active('/pipeline')">Pipeline</a>
-          <a routerLink="/sources" [class.active]="active('/sources')">Sources</a>
-          <a routerLink="/strategy" [class.active]="active('/strategy')">Strategy</a>
-          <a routerLink="/artifacts" [class.active]="active('/artifacts')">Artifacts</a>
-          <a routerLink="/settings" [class.active]="active('/settings')">Settings</a>
+          <span class="nav-section-label">Workspace</span>
+          <a routerLink="/dashboard" [class.active]="active('/dashboard')" [attr.aria-current]="active('/dashboard') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">⌂</span>Dashboard</a>
+          <a routerLink="/profile" [class.active]="active('/profile')" [attr.aria-current]="active('/profile') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">◎</span>Profile</a>
+          <a routerLink="/matches" [class.active]="active('/matches')" [attr.aria-current]="active('/matches') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">◇</span>Matches</a>
+          <a routerLink="/resume-lab" [class.active]="active('/resume-lab')" [attr.aria-current]="active('/resume-lab') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">▤</span>Resume Lab</a>
+          <a routerLink="/pipeline" [class.active]="active('/pipeline')" [attr.aria-current]="active('/pipeline') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">▦</span>Pipeline</a>
+
+          <span class="nav-section-label nav-section-spaced">Insights & tools</span>
+          <a routerLink="/sources" [class.active]="active('/sources')" [attr.aria-current]="active('/sources') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">⌁</span>Sources</a>
+          <a routerLink="/strategy" [class.active]="active('/strategy')" [attr.aria-current]="active('/strategy') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">↗</span>Strategy</a>
+          <a routerLink="/artifacts" [class.active]="active('/artifacts')" [attr.aria-current]="active('/artifacts') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">□</span>Artifacts</a>
+          <a routerLink="/settings" [class.active]="active('/settings')" [attr.aria-current]="active('/settings') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">⚙</span>Settings</a>
         </nav>
 
         <div class="side-nav-context">
-          <span class="side-nav-context-label">Latest event</span>
-          <p>{{ latestEvent }}</p>
+          <div class="connection-row">
+            <span class="socket-status" [class.connected]="socketStatus === 'connected'" [title]="socketStatus"><span></span></span>
+            <div><strong>{{ socketStatus === 'connected' ? 'Live updates on' : 'Connecting' }}</strong><small>{{ latestEvent }}</small></div>
+          </div>
         </div>
 
-        <button class="btn-mini side-nav-logout" type="button" (click)="logout()">Logout</button>
+        <button class="btn-secondary side-nav-logout" type="button" (click)="logout()"><span>↪</span> Sign out</button>
       </aside>
 
       <main class="app-main">
@@ -53,6 +71,7 @@ export class AppComponent implements OnInit, OnDestroy {
   currentPath = '/dashboard';
   socketStatus: RealtimeStatus = 'disconnected';
   latestEvent = 'No events yet';
+  navOpen = false;
   private navSub?: Subscription;
   private statusSub?: Subscription;
   private eventsSub?: Subscription;
@@ -71,6 +90,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.navSub = this.router.events.pipe(filter((event) => event instanceof NavigationEnd)).subscribe((event) => {
       const nav = event as NavigationEnd;
       this.currentPath = nav.urlAfterRedirects || nav.url;
+      this.closeNav();
       if (this.auth.hasSession()) {
         this.realtime.connect();
       }
@@ -93,10 +113,13 @@ export class AppComponent implements OnInit, OnDestroy {
     return this.currentPath === path || this.currentPath.startsWith(`${path}/`);
   }
 
+  closeNav(): void {
+    this.navOpen = false;
+  }
+
   logout(): void {
     this.auth.logout();
     this.realtime.disconnect();
     this.router.navigate(['/login']);
   }
 }
-
