@@ -27,6 +27,7 @@ export interface ProfileFact {
   fact_type: string;
   title: string;
   statement: string;
+  normalized_value: string;
   confidence: string;
   source_document_title: string;
   verified_by_user: boolean;
@@ -127,6 +128,14 @@ export class ApiService {
 
   verifyFact(id: number): Observable<ProfileFact> {
     return this.http.post<ProfileFact>(`${environment.apiBaseUrl}/profile/facts/${id}/verify/`, {});
+  }
+
+  updateFact(id: number, payload: Partial<ProfileFact>): Observable<ProfileFact> {
+    return this.http.patch<ProfileFact>(`${environment.apiBaseUrl}/profile/facts/${id}/`, payload);
+  }
+
+  deleteFact(id: number): Observable<void> {
+    return this.http.delete<void>(`${environment.apiBaseUrl}/profile/facts/${id}/`);
   }
 
   sources(): Observable<Paged<JobSource>> {

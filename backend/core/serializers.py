@@ -45,7 +45,7 @@ class ProfileFactSerializer(serializers.ModelSerializer):
             'source_document', 'source_document_title', 'source_chunk',
             'verified_by_user', 'metadata', 'created_at', 'updated_at',
         ]
-        read_only_fields = ['metadata', 'created_at', 'updated_at']
+        read_only_fields = ['source_document', 'source_document_title', 'source_chunk', 'metadata', 'created_at', 'updated_at']
 
 
 class JobSourceSerializer(serializers.ModelSerializer):
@@ -182,4 +182,3 @@ class ApplicationSerializer(serializers.ModelSerializer):
         if status == 'applied' and not attrs.get('applied_at') and not getattr(self.instance, 'applied_at', None):
             attrs['applied_at'] = timezone.now()
         return attrs
-

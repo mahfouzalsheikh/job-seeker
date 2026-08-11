@@ -38,8 +38,19 @@ from .serializers import (
     ResumeSerializer,
     ResumeTailorSerializer,
 )
-from .services import create_tailored_resume, dashboard, generate_strategy, import_job_posting, recompute_match
+from .services import create_tailored_resume, dashboard, generate_strategy, import_job_posting, ingest_profile_document, recompute_match
 from .tasks import ingest_profile_document_task, recompute_all_matches_task, recompute_job_match_task
+
+
+def enqueue_profile_ingestion(document: ProfileDocument) -> dict:
+    try:
+        task = ingest_profile_document_task.delay(document.id)
+        return {'mode': 'async', 'task_id': task.id}
+    except Exception:
+        publish_user_event(document.owner_id, 'profile_ingestion_started', {'document_id': document.id})
+        result = ingest_profile_document(document)
+        publish_user_event(document.owner_id, 'profile_ingestion_finished', {'document_id': document.id, **result})
+        return {'mode': 'sync', **result}
 
 
 class OwnedViewSet(viewsets.ModelViewSet):
@@ -61,7 +72,7 @@ class ProfileDocumentViewSet(OwnedViewSet):
         document.status = 'queued'
         document.status_message = 'Queued for ingestion'
         document.save(update_fields=['status', 'status_message', 'updated_at'])
-        ingest_profile_document_task.delay(document.id)
+        enqueue_profile_ingestion(document)
 
     @action(detail=True, methods=['post'])
     def ingest(self, request, pk=None):
@@ -69,8 +80,8 @@ class ProfileDocumentViewSet(OwnedViewSet):
         document.status = 'queued'
         document.status_message = 'Queued for ingestion'
         document.save(update_fields=['status', 'status_message', 'updated_at'])
-        task = ingest_profile_document_task.delay(document.id)
-        return Response({'task_id': task.id, 'status': document.status})
+        result = enqueue_profile_ingestion(document)
+        return Response({'status': document.status, **result})
 
 
 class ProfileFactViewSet(OwnedViewSet):
@@ -90,11 +101,25 @@ class ProfileFactViewSet(OwnedViewSet):
             qs = qs.filter(Q(title__icontains=search) | Q(statement__icontains=search))
         return qs
 
+    def perform_update(self, serializer):
+        fact = serializer.save()
+        from .ai import embed_text
+
+        fact.embedding = embed_text(f'{fact.title}\n{fact.statement}')
+        fact.save(update_fields=['embedding', 'updated_at'])
+        publish_user_event(self.request.user.id, 'profile_fact_updated', {'fact_id': fact.id})
+
+    def perform_destroy(self, instance):
+        fact_id = instance.id
+        instance.delete()
+        publish_user_event(self.request.user.id, 'profile_fact_deleted', {'fact_id': fact_id})
+
     @action(detail=True, methods=['post'])
     def verify(self, request, pk=None):
         fact = self.get_object()
         fact.verified_by_user = True
         fact.save(update_fields=['verified_by_user', 'updated_at'])
+        publish_user_event(request.user.id, 'profile_fact_updated', {'fact_id': fact.id})
         return Response(self.get_serializer(fact).data)
 
 

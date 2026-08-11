@@ -1,7 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import { ApiService, ProfileDocument, ProfileFact } from '../services/api.service';
+import { RealtimeService } from '../services/realtime.service';
 
 @Component({
   standalone: true,
@@ -65,34 +67,91 @@ import { ApiService, ProfileDocument, ProfileFact } from '../services/api.servic
         </div>
         <div class="fact-grid">
           <article class="fact-card" *ngFor="let fact of facts">
-            <div class="card-line">
-              <span class="status-chip">{{ fact.fact_type }}</span>
-              <span class="status-chip" [class.good]="fact.verified_by_user">{{ fact.verified_by_user ? 'verified' : fact.confidence }}</span>
-            </div>
-            <h3>{{ fact.title }}</h3>
-            <p>{{ fact.statement }}</p>
-            <small>{{ fact.source_document_title }}</small>
-            <button class="btn-mini" type="button" *ngIf="!fact.verified_by_user" (click)="verify(fact)">Verify</button>
+            <ng-container *ngIf="editingFactId === fact.id; else factView">
+              <label>
+                Type
+                <select [(ngModel)]="factDraft.fact_type" [name]="'factType' + fact.id">
+                  <option *ngFor="let type of factTypes" [value]="type">{{ type }}</option>
+                </select>
+              </label>
+              <label>
+                Title
+                <input [(ngModel)]="factDraft.title" [name]="'factTitle' + fact.id">
+              </label>
+              <label>
+                Statement
+                <textarea rows="5" [(ngModel)]="factDraft.statement" [name]="'factStatement' + fact.id"></textarea>
+              </label>
+              <label>
+                Normalized value
+                <input [(ngModel)]="factDraft.normalized_value" [name]="'factNormalized' + fact.id">
+              </label>
+              <div class="edit-grid compact-edit-grid">
+                <label>
+                  Confidence
+                  <select [(ngModel)]="factDraft.confidence" [name]="'factConfidence' + fact.id">
+                    <option *ngFor="let confidence of confidenceOptions" [value]="confidence">{{ confidence }}</option>
+                  </select>
+                </label>
+                <label class="checkbox-label">
+                  <input type="checkbox" [(ngModel)]="factDraft.verified_by_user" [name]="'factVerified' + fact.id">
+                  Verified
+                </label>
+              </div>
+              <div class="action-row">
+                <button class="btn-primary" type="button" (click)="saveFact(fact)">Save</button>
+                <button class="btn-secondary" type="button" (click)="cancelEdit()">Cancel</button>
+              </div>
+            </ng-container>
+
+            <ng-template #factView>
+              <div class="card-line">
+                <span class="status-chip">{{ fact.fact_type }}</span>
+                <span class="status-chip" [class.good]="fact.verified_by_user">{{ fact.verified_by_user ? 'verified' : fact.confidence }}</span>
+              </div>
+              <h3>{{ fact.title }}</h3>
+              <p>{{ fact.statement }}</p>
+              <small>{{ fact.source_document_title }}</small>
+              <div class="action-row">
+                <button class="btn-mini" type="button" *ngIf="!fact.verified_by_user" (click)="verify(fact)">Verify</button>
+                <button class="btn-mini" type="button" (click)="editFact(fact)">Edit</button>
+                <button class="btn-mini btn-danger" type="button" (click)="deleteFact(fact)">Delete</button>
+              </div>
+            </ng-template>
           </article>
         </div>
       </section>
     </section>
   `,
 })
-export class ProfileComponent implements OnInit {
+export class ProfileComponent implements OnInit, OnDestroy {
   documents: ProfileDocument[] = [];
   facts: ProfileFact[] = [];
+  factTypes = ['skill', 'achievement', 'role', 'project', 'metric', 'preference', 'constraint', 'education'];
+  confidenceOptions = ['low', 'medium', 'high'];
   kind = 'resume';
   title = 'Canonical Resume';
   rawText = '';
   factSearch = '';
   message = '';
+  editingFactId: number | null = null;
+  factDraft: Partial<ProfileFact> = {};
   private file?: File;
+  private realtimeSub?: Subscription;
 
-  constructor(private api: ApiService) {}
+  constructor(private api: ApiService, private realtime: RealtimeService) {}
 
   ngOnInit(): void {
     this.load();
+    this.realtimeSub = this.realtime.events$.subscribe((event) => {
+      if (['profile_ingestion_finished', 'profile_fact_updated', 'profile_fact_deleted'].includes(event.type)) {
+        this.load();
+      }
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.realtimeSub?.unsubscribe();
   }
 
   load(): void {
@@ -135,6 +194,55 @@ export class ProfileComponent implements OnInit {
   verify(fact: ProfileFact): void {
     this.api.verifyFact(fact.id).subscribe((updated) => {
       fact.verified_by_user = updated.verified_by_user;
+    });
+  }
+
+  editFact(fact: ProfileFact): void {
+    this.editingFactId = fact.id;
+    this.factDraft = { ...fact };
+  }
+
+  cancelEdit(): void {
+    this.editingFactId = null;
+    this.factDraft = {};
+  }
+
+  saveFact(fact: ProfileFact): void {
+    const payload: Partial<ProfileFact> = {
+      fact_type: String(this.factDraft.fact_type || fact.fact_type),
+      title: String(this.factDraft.title || '').trim(),
+      statement: String(this.factDraft.statement || '').trim(),
+      normalized_value: String(this.factDraft.normalized_value || '').trim(),
+      confidence: String(this.factDraft.confidence || fact.confidence),
+      verified_by_user: Boolean(this.factDraft.verified_by_user),
+    };
+    if (!payload.title || !payload.statement) {
+      this.message = 'Title and statement are required.';
+      return;
+    }
+    this.api.updateFact(fact.id, payload).subscribe({
+      next: (updated) => {
+        Object.assign(fact, updated);
+        this.message = 'Profile fact saved.';
+        this.cancelEdit();
+      },
+      error: () => this.message = 'Could not save profile fact.',
+    });
+  }
+
+  deleteFact(fact: ProfileFact): void {
+    if (!confirm(`Delete "${fact.title}"?`)) {
+      return;
+    }
+    this.api.deleteFact(fact.id).subscribe({
+      next: () => {
+        this.facts = this.facts.filter((item) => item.id !== fact.id);
+        this.message = 'Profile fact deleted.';
+        if (this.editingFactId === fact.id) {
+          this.cancelEdit();
+        }
+      },
+      error: () => this.message = 'Could not delete profile fact.',
     });
   }
 }

@@ -460,6 +460,11 @@ textarea:focus {
   font-size: 0.82rem;
 }
 
+.btn-danger {
+  border-color: color-mix(in srgb, var(--failed) 36%, var(--line));
+  color: var(--failed);
+}
+
 .muted {
   color: var(--muted);
   font-size: 0.9rem;
@@ -509,6 +514,23 @@ textarea:focus {
   display: grid;
   grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.4fr);
   gap: 12px;
+}
+
+.compact-edit-grid {
+  grid-template-columns: minmax(150px, 1fr) minmax(120px, 0.8fr);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  margin-top: 24px;
+}
+
+.checkbox-label input {
+  width: auto;
+  min-height: 0;
 }
 
 .detail-panel {
@@ -622,4 +644,3 @@ textarea:focus {
     grid-template-columns: repeat(2, minmax(210px, 1fr));
   }
 }
-
