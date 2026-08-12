@@ -115,11 +115,21 @@ CELERY_TASK_SOFT_TIME_LIMIT = int(os.environ.get('CELERY_TASK_SOFT_TIME_LIMIT_SE
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {'hosts': [REDIS_URL]},
+        'CONFIG': {
+            'hosts': [{
+                'address': REDIS_URL,
+                # redis-py 8 defaults reads to five seconds, the same length
+                # as channels_redis's blocking BZPOPMIN. Disable the socket
+                # deadline so the command's own timeout can complete cleanly.
+                'socket_timeout': None,
+                'socket_connect_timeout': 5,
+            }],
+        },
     }
 }
 
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 OPENAI_TEXT_MODEL = os.environ.get('OPENAI_TEXT_MODEL', 'gpt-4.1-mini')
 OPENAI_EMBEDDING_MODEL = os.environ.get('OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small')
-
+OPENAI_TIMEOUT_SECONDS = float(os.environ.get('OPENAI_TIMEOUT_SECONDS', '45'))
+OPENAI_MAX_RETRIES = int(os.environ.get('OPENAI_MAX_RETRIES', '0'))

@@ -105,6 +105,7 @@ export class PipelineComponent implements OnInit {
     { key: 'onsite_final', label: 'Onsite / Final' },
     { key: 'offer', label: 'Offer' },
     { key: 'rejected', label: 'Rejected' },
+    { key: 'archived', label: 'Archived' },
   ];
 
   constructor(private api: ApiService) {}

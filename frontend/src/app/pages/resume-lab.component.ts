@@ -22,18 +22,19 @@ import { ApiService, JobPosting, Resume } from '../services/api.service';
         <button type="button" role="tab" [class.active]="activeTab === 'create'" [attr.aria-selected]="activeTab === 'create'" (click)="activeTab = 'create'">Canonical resume</button>
         <button type="button" role="tab" [class.active]="activeTab === 'tailor'" [attr.aria-selected]="activeTab === 'tailor'" (click)="activeTab = 'tailor'">Tailored draft</button>
       </div>
+      <p class="feedback-banner" *ngIf="message">{{ message }}</p>
 
       <section class="panel focused-form" *ngIf="activeTab === 'create'">
         <div class="panel-head"><div><h2>Create a canonical resume</h2><p>This becomes the trusted base for future tailored versions.</p></div></div>
         <label>Resume title<input [(ngModel)]="newTitle" name="newTitle" placeholder="Canonical Resume"></label>
         <label>Resume content <span class="field-hint">Markdown supported</span><textarea rows="18" [(ngModel)]="newMarkdown" name="newMarkdown" placeholder="Paste or write your master resume…"></textarea></label>
-        <div class="action-row form-actions"><button class="btn-primary" type="button" (click)="createCanonical()" [disabled]="!newMarkdown.trim()">Save canonical resume</button><button class="btn-secondary" type="button" (click)="activeTab = 'library'">Cancel</button><p class="muted" *ngIf="message">{{ message }}</p></div>
+        <div class="action-row form-actions"><button class="btn-primary" type="button" (click)="createCanonical()" [disabled]="!newMarkdown.trim()">Save canonical resume</button><button class="btn-secondary" type="button" (click)="activeTab = 'library'">Cancel</button></div>
       </section>
 
       <section class="panel focused-form" *ngIf="activeTab === 'tailor'">
         <div class="generation-hero"><span class="generation-icon">✦</span><div><h2>Generate a tailored draft</h2><p>Select a target role. The studio uses your canonical resume and verified evidence to produce a focused version.</p></div></div>
         <label>Target opportunity<select [(ngModel)]="targetJobId" name="targetJobId"><option [ngValue]="null">Choose a job from your matches</option><option *ngFor="let job of jobs" [ngValue]="job.id">{{ job.title }} · {{ job.company }}</option></select></label>
-        <div class="action-row form-actions"><button class="btn-primary" type="button" (click)="tailor()" [disabled]="!targetJobId">Generate tailored draft</button><button class="btn-secondary" type="button" (click)="activeTab = 'library'">Cancel</button><p class="muted" *ngIf="message">{{ message }}</p></div>
+        <div class="action-row form-actions"><button class="btn-primary" type="button" (click)="tailor()" [disabled]="!targetJobId || generating">{{ generating ? 'Generating…' : 'Generate tailored draft' }}</button><button class="btn-secondary" type="button" (click)="activeTab = 'library'" [disabled]="generating">Cancel</button></div>
       </section>
 
       <div class="workspace-grid" *ngIf="activeTab === 'library'">
@@ -104,6 +105,7 @@ export class ResumeLabComponent implements OnInit {
   newTitle = 'Canonical Resume';
   newMarkdown = '';
   message = '';
+  generating = false;
   activeTab: 'library' | 'create' | 'tailor' = 'library';
 
   constructor(private api: ApiService) {}
@@ -139,11 +141,19 @@ export class ResumeLabComponent implements OnInit {
   tailor(): void {
     if (!this.targetJobId) return;
     this.message = 'Generating tailored resume.';
-    this.api.tailorResume(this.targetJobId).subscribe((resume) => {
-      this.message = 'Tailored resume created.';
-      this.selected = resume;
-      this.activeTab = 'library';
-      this.load();
+    this.generating = true;
+    this.api.tailorResume(this.targetJobId).subscribe({
+      next: (resume) => {
+        this.message = 'Tailored resume created.';
+        this.selected = resume;
+        this.activeTab = 'library';
+        this.generating = false;
+        this.load();
+      },
+      error: () => {
+        this.message = 'The tailored resume could not be generated. Please try again.';
+        this.generating = false;
+      },
     });
   }
 

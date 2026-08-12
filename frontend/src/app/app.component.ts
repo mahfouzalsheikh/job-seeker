@@ -50,7 +50,7 @@ import { RealtimeService, RealtimeStatus } from './services/realtime.service';
         <div class="side-nav-context">
           <div class="connection-row">
             <span class="socket-status" [class.connected]="socketStatus === 'connected'" [title]="socketStatus"><span></span></span>
-            <div><strong>{{ socketStatus === 'connected' ? 'Live updates on' : 'Connecting' }}</strong><small>{{ latestEvent }}</small></div>
+            <div><strong>{{ socketStatus === 'connected' ? 'Live updates on' : socketStatus === 'connecting' ? 'Connecting' : 'Live updates off' }}</strong><small>{{ latestEvent }}</small></div>
           </div>
         </div>
 
@@ -73,6 +73,7 @@ export class AppComponent implements OnInit, OnDestroy {
   latestEvent = 'No events yet';
   navOpen = false;
   private navSub?: Subscription;
+  private authSub?: Subscription;
   private statusSub?: Subscription;
   private eventsSub?: Subscription;
 
@@ -84,9 +85,13 @@ export class AppComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.currentPath = this.router.url;
-    if (this.auth.hasSession()) {
-      this.realtime.connect();
-    }
+    this.authSub = this.auth.authed$.subscribe((authenticated) => {
+      if (authenticated) {
+        this.realtime.reconnect();
+      } else {
+        this.realtime.disconnect();
+      }
+    });
     this.navSub = this.router.events.pipe(filter((event) => event instanceof NavigationEnd)).subscribe((event) => {
       const nav = event as NavigationEnd;
       this.currentPath = nav.urlAfterRedirects || nav.url;
@@ -105,6 +110,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.navSub?.unsubscribe();
+    this.authSub?.unsubscribe();
     this.statusSub?.unsubscribe();
     this.eventsSub?.unsubscribe();
   }

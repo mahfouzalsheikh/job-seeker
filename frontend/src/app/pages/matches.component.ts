@@ -22,6 +22,7 @@ import { ApiService, JobPosting } from '../services/api.service';
         <button type="button" role="tab" [class.active]="activeTab === 'matches'" [attr.aria-selected]="activeTab === 'matches'" (click)="activeTab = 'matches'">Your matches <span>{{ jobs.length }}</span></button>
         <button type="button" role="tab" [class.active]="activeTab === 'import'" [attr.aria-selected]="activeTab === 'import'" (click)="activeTab = 'import'">Import job</button>
       </div>
+      <p class="feedback-banner" *ngIf="message">{{ message }}</p>
 
       <section class="panel import-panel" *ngIf="activeTab === 'import'">
         <div class="panel-head"><div><h2>Add a job description</h2><p>Paste the complete posting. We’ll structure it and score it against your profile.</p></div></div>
@@ -30,7 +31,6 @@ import { ApiService, JobPosting } from '../services/api.service';
         <div class="action-row form-actions">
           <button class="btn-primary" type="button" (click)="importJob()" [disabled]="!jobText.trim()">Extract and rank</button>
           <button class="btn-secondary" type="button" (click)="activeTab = 'matches'">Cancel</button>
-          <span class="muted" *ngIf="message">{{ message }}</span>
         </div>
       </section>
 

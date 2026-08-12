@@ -122,7 +122,14 @@ def openai_client():
         from openai import OpenAI
     except Exception:
         return None
-    return OpenAI(api_key=api_key)
+    # AI-backed endpoints have deterministic local fallbacks. Keep upstream
+    # failures bounded so a slow provider cannot leave an HTTP request hanging
+    # for the SDK's multi-minute default timeout/retry window.
+    return OpenAI(
+        api_key=api_key,
+        timeout=getattr(settings, 'OPENAI_TIMEOUT_SECONDS', 45),
+        max_retries=getattr(settings, 'OPENAI_MAX_RETRIES', 0),
+    )
 
 
 def embed_text(text: str) -> list[float]:
@@ -360,4 +367,3 @@ def tailor_resume(
         },
         source='heuristic',
     )
-

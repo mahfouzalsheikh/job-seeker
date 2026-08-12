@@ -18,6 +18,20 @@ from .models import (
 )
 
 
+class OwnerScopedRelationsMixin:
+    owner_related_fields: dict[str, type] = {}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get('request')
+        owner = getattr(request, 'user', None)
+        authenticated = bool(owner and owner.is_authenticated)
+        for field_name, model in self.owner_related_fields.items():
+            field = self.fields.get(field_name)
+            if field is not None and hasattr(field, 'queryset'):
+                field.queryset = model.objects.filter(owner=owner) if authenticated else model.objects.none()
+
+
 class ProfileDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProfileDocument
@@ -74,8 +88,9 @@ class JobMatchSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class JobPostingSerializer(serializers.ModelSerializer):
+class JobPostingSerializer(OwnerScopedRelationsMixin, serializers.ModelSerializer):
     match = JobMatchSerializer(read_only=True)
+    owner_related_fields = {'source': JobSource}
 
     class Meta:
         model = JobPosting
@@ -109,9 +124,10 @@ class ResumeClaimSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at']
 
 
-class ResumeSerializer(serializers.ModelSerializer):
+class ResumeSerializer(OwnerScopedRelationsMixin, serializers.ModelSerializer):
     target_job_title = serializers.CharField(source='target_job.title', read_only=True)
     claims = ResumeClaimSerializer(many=True, read_only=True)
+    owner_related_fields = {'parent_resume': Resume, 'target_job': JobPosting}
 
     class Meta:
         model = Resume
@@ -135,15 +151,18 @@ class ResumeTailorSerializer(serializers.Serializer):
             self.fields['canonical_resume'].queryset = Resume.objects.filter(owner=owner, kind='canonical')
 
 
-class ApplicationEventSerializer(serializers.ModelSerializer):
+class ApplicationEventSerializer(OwnerScopedRelationsMixin, serializers.ModelSerializer):
+    owner_related_fields = {'application': Application}
+
     class Meta:
         model = ApplicationEvent
         fields = ['id', 'application', 'event_type', 'happened_at', 'notes', 'metadata', 'created_at']
         read_only_fields = ['metadata', 'created_at']
 
 
-class ArtifactSerializer(serializers.ModelSerializer):
+class ArtifactSerializer(OwnerScopedRelationsMixin, serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
+    owner_related_fields = {'application': Application, 'resume': Resume}
 
     class Meta:
         model = Artifact
@@ -161,11 +180,12 @@ class ArtifactSerializer(serializers.ModelSerializer):
         return request.build_absolute_uri(url) if request else url
 
 
-class ApplicationSerializer(serializers.ModelSerializer):
+class ApplicationSerializer(OwnerScopedRelationsMixin, serializers.ModelSerializer):
     job_detail = JobPostingSerializer(source='job', read_only=True)
     resume_title = serializers.CharField(source='resume.title', read_only=True)
     events = ApplicationEventSerializer(many=True, read_only=True)
     artifacts = ArtifactSerializer(many=True, read_only=True)
+    owner_related_fields = {'job': JobPosting, 'resume': Resume}
 
     class Meta:
         model = Application

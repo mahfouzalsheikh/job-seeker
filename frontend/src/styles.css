@@ -629,6 +629,19 @@ textarea:focus {
   font-size: 0.85rem;
 }
 
+.feedback-banner {
+  width: fit-content;
+  max-width: 100%;
+  margin: -8px 0 18px;
+  padding: 9px 12px;
+  border: 1px solid #dadaf6;
+  border-radius: 9px;
+  color: var(--accent-strong);
+  background: var(--accent-pale);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 .error {
   color: var(--failed);
   font-weight: 600;
@@ -1355,7 +1368,7 @@ a.metric:hover {
 
 .pipeline-board {
   display: grid;
-  grid-template-columns: repeat(10, minmax(235px, 1fr));
+  grid-template-columns: repeat(11, minmax(235px, 1fr));
   gap: 12px;
   overflow-x: auto;
   margin: 0 -4px 22px;
@@ -1887,7 +1900,7 @@ a.metric:hover {
   }
 
   .pipeline-board {
-    grid-template-columns: repeat(10, minmax(82vw, 1fr));
+    grid-template-columns: repeat(11, minmax(82vw, 1fr));
   }
 
   .action-row .btn-primary,

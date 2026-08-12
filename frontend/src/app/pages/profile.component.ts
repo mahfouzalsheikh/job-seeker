@@ -29,6 +29,7 @@ import { RealtimeService } from '../services/realtime.service';
         <button type="button" role="tab" [class.active]="activeTab === 'facts'" [attr.aria-selected]="activeTab === 'facts'" (click)="activeTab = 'facts'">Profile facts <span>{{ facts.length }}</span></button>
         <button type="button" role="tab" [class.active]="activeTab === 'sources'" [attr.aria-selected]="activeTab === 'sources'" (click)="activeTab = 'sources'">Source material <span>{{ documents.length }}</span></button>
       </div>
+      <p class="feedback-banner" *ngIf="message">{{ message }}</p>
 
       <section class="panel" *ngIf="activeTab === 'facts'">
         <div class="panel-head">
@@ -118,7 +119,7 @@ import { RealtimeService } from '../services/realtime.service';
             </div>
             <label class="file-drop">Upload a file<input type="file" (change)="onFile($event)"><span>PDF, DOCX, or plain text</span></label>
             <label>Or paste text<textarea name="rawText" rows="9" [(ngModel)]="rawText" placeholder="Paste resume content, accomplishments, feedback, or project notes…"></textarea></label>
-            <div class="action-row form-actions"><button class="btn-primary" type="submit">Extract profile facts</button><p class="muted" *ngIf="message">{{ message }}</p></div>
+            <div class="action-row form-actions"><button class="btn-primary" type="submit">Extract profile facts</button></div>
           </form>
         </section>
 

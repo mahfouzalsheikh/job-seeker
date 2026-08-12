@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable, tap } from 'rxjs';
+import { BehaviorSubject, finalize, Observable, shareReplay, tap } from 'rxjs';
 import { environment } from '../../environments/environment';
 
 interface TokenResponse {
@@ -13,6 +13,7 @@ export class AuthService {
   private readonly accessKey = 'job_search_studio_access';
   private readonly refreshKey = 'job_search_studio_refresh';
   private readonly authedSubject = new BehaviorSubject<boolean>(this.hasSession());
+  private refreshRequest$?: Observable<{ access: string }>;
   authed$ = this.authedSubject.asObservable();
 
   constructor(private http: HttpClient) {}
@@ -28,14 +29,20 @@ export class AuthService {
   }
 
   refresh(): Observable<{ access: string }> {
-    return this.http.post<{ access: string }>(`${environment.apiBaseUrl}/auth/refresh/`, {
+    if (this.refreshRequest$) {
+      return this.refreshRequest$;
+    }
+    this.refreshRequest$ = this.http.post<{ access: string }>(`${environment.apiBaseUrl}/auth/refresh/`, {
       refresh: this.getRefreshToken(),
     }).pipe(
       tap((tokens) => {
         localStorage.setItem(this.accessKey, tokens.access);
         this.authedSubject.next(true);
       }),
+      finalize(() => this.refreshRequest$ = undefined),
+      shareReplay(1),
     );
+    return this.refreshRequest$;
   }
 
   logout(): void {
@@ -56,4 +63,3 @@ export class AuthService {
     return localStorage.getItem(this.refreshKey) || '';
   }
 }
-
