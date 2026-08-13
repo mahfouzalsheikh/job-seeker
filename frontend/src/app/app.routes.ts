@@ -9,12 +9,14 @@ import { SourcesComponent } from './pages/sources.component';
 import { StrategyComponent } from './pages/strategy.component';
 import { ArtifactsComponent } from './pages/artifacts.component';
 import { SettingsComponent } from './pages/settings.component';
+import { ConciergeComponent } from './pages/concierge.component';
 import { authGuard } from './services/auth.guard';
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
   { path: 'login', component: LoginComponent },
   { path: 'dashboard', component: DashboardComponent, canActivate: [authGuard] },
+  { path: 'concierge', component: ConciergeComponent, canActivate: [authGuard] },
   { path: 'profile', component: ProfileComponent, canActivate: [authGuard] },
   { path: 'matches', component: MatchesComponent, canActivate: [authGuard] },
   { path: 'resume-lab', component: ResumeLabComponent, canActivate: [authGuard] },
@@ -25,4 +27,3 @@ export const routes: Routes = [
   { path: 'settings', component: SettingsComponent, canActivate: [authGuard] },
   { path: '**', redirectTo: 'dashboard' },
 ];
-

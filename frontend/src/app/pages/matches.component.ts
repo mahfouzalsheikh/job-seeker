@@ -11,9 +11,9 @@ import { ApiService, JobPosting } from '../services/api.service';
     <section class="page">
       <div class="page-head">
         <div>
-          <p class="eyebrow">Discovery</p>
-          <h1>Matches</h1>
-          <p class="page-intro">Compare opportunities against your evidence and focus on the best-fit roles.</p>
+          <p class="eyebrow">Opportunity inbox</p>
+          <h1>Decide where your effort belongs.</h1>
+          <p class="page-intro">Every role is filtered for eligibility, decomposed into fit signals, and backed by your profile evidence.</p>
         </div>
         <button class="btn-primary" type="button" (click)="activeTab = 'import'">＋ Import a job</button>
       </div>
@@ -37,7 +37,7 @@ import { ApiService, JobPosting } from '../services/api.service';
       <div class="workspace-grid" *ngIf="activeTab === 'matches'">
         <section class="panel matches-list-panel">
           <div class="panel-head">
-            <div><h2>Ranked opportunities</h2><p>{{ jobs.length }} roles in your workspace</p></div>
+            <div><h2>Ranked opportunities</h2><p>{{ jobs.length }} roles · sorted by decision value</p></div>
             <div class="filter-row">
               <div class="search-field"><span>⌕</span><input class="compact-input" aria-label="Search jobs" placeholder="Search" [(ngModel)]="search" (keyup.enter)="load()"></div>
               <select class="compact-input" [(ngModel)]="minScore" (change)="load()">
@@ -57,6 +57,7 @@ import { ApiService, JobPosting } from '../services/api.service';
             <span>
               <strong>{{ job.title }}</strong>
               <small>{{ job.company || 'Unknown company' }} · {{ job.location || job.remote_policy }}</small>
+              <span class="job-meta-line"><i [class.pass]="job.match?.hard_filter_status === 'pass'"></i>{{ job.match?.hard_filter_status || 'uncertain' }} eligibility · {{ job.freshness_status || 'fresh' }}</span>
             </span>
             <span class="fit-score" [class.high]="(job.match?.score || 0) >= 75">{{ job.match?.score || 0 }}<small>fit</small></span>
           </button>
@@ -76,9 +77,15 @@ import { ApiService, JobPosting } from '../services/api.service';
             <span class="status-chip">{{ selected.remote_policy }}</span>
             <span class="status-chip">{{ selected.match?.confidence || 'unscored' }}</span>
             <span class="status-chip">{{ selected.seniority || 'seniority unknown' }}</span>
+            <span class="status-chip" [class.good]="selected.match?.hard_filter_status === 'pass'">{{ selected.match?.hard_filter_status || 'uncertain' }} eligibility</span>
           </div>
 
           <div class="insight-callout"><span>✦</span><div><strong>Match summary</strong><p>{{ selected.match?.explanation_json?.summary || 'No match summary yet.' }}</p></div></div>
+
+          <h3>Why this score</h3>
+          <div class="signal-breakdown">
+            <div *ngFor="let signal of selected.match?.signals || []"><div><strong>{{ signal.label }}</strong><small>{{ signal.weight }}% weight</small></div><span><i [style.width.%]="signal.score"></i></span><b>{{ signal.score }}</b></div>
+          </div>
 
           <div class="two-col detail-columns">
             <div><h3>Covered skills</h3><div class="chip-row"><span class="status-chip good" *ngFor="let skill of selected.match?.explanation_json?.covered_skills || []">{{ skill }}</span><span class="muted" *ngIf="!(selected.match?.explanation_json?.covered_skills || []).length">No covered skills identified.</span></div></div>
@@ -94,8 +101,8 @@ import { ApiService, JobPosting } from '../services/api.service';
           </div>
 
           <div class="action-row">
-            <button class="btn-primary" type="button" (click)="tailor(selected)">Customize Resume</button>
-            <button class="btn-secondary" type="button" (click)="createApplication(selected)">Create Application</button>
+            <button class="btn-primary" type="button" (click)="prepare(selected)">Approve to prepare →</button>
+            <button class="btn-secondary" type="button" (click)="createApplication(selected)">Save to pipeline</button>
             <button class="btn-secondary" type="button" (click)="recompute(selected)">Recompute</button>
           </div>
         </section>
@@ -168,6 +175,14 @@ export class MatchesComponent implements OnInit {
     this.api.tailorResume(job.id).subscribe({
       next: () => this.message = 'Tailored resume created. Open Resume Lab to review it.',
       error: () => this.message = 'Resume tailoring failed.',
+    });
+  }
+
+  prepare(job: JobPosting): void {
+    this.message = 'Starting the preparation workflow.';
+    this.api.requestPreparation(job.id).subscribe({
+      next: () => this.message = 'Approval requested. Open Concierge to review it.',
+      error: () => this.message = 'Could not start the preparation workflow.',
     });
   }
 

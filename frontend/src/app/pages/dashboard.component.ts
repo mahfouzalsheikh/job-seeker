@@ -7,78 +7,54 @@ import { ApiService } from '../services/api.service';
   standalone: true,
   imports: [CommonModule, RouterLink],
   template: `
-    <section class="page">
-      <div class="page-head">
+    <section class="page today-page">
+      <div class="today-hero">
         <div>
-          <p class="eyebrow">Your workbench</p>
-          <h1>Good momentum starts here.</h1>
-          <p class="page-intro">See what needs attention and move your search forward with one clear next step.</p>
+          <p class="eyebrow">Thursday · Your daily briefing</p>
+          <h1>Good morning.<br><span>Three decisions can move your search forward.</span></h1>
+          <p>{{ data?.greeting }}</p>
         </div>
-        <a class="btn-primary" routerLink="/matches">Review matches →</a>
+        <a class="concierge-cta" routerLink="/concierge"><span>✦</span><div><strong>Ask your concierge</strong><small>Delegate or clarify anything</small></div><i>→</i></a>
       </div>
 
-      <div class="metric-grid">
-        <a class="metric" routerLink="/profile"><span class="metric-icon purple">◎</span><div><span>Profile facts</span><strong>{{ data?.profile_facts || 0 }}</strong><small>{{ data?.profile_documents || 0 }} sources</small></div></a>
-        <a class="metric" routerLink="/matches"><span class="metric-icon blue">◇</span><div><span>Jobs tracked</span><strong>{{ data?.jobs || 0 }}</strong><small>{{ data?.matches || 0 }} scored</small></div></a>
-        <a class="metric" routerLink="/resume-lab"><span class="metric-icon amber">▤</span><div><span>Resumes</span><strong>{{ data?.resumes || 0 }}</strong><small>Ready to tailor</small></div></a>
-        <a class="metric" routerLink="/pipeline"><span class="metric-icon green">▦</span><div><span>Applications</span><strong>{{ data?.applications || 0 }}</strong><small>{{ data?.strategy?.totals?.interviews || 0 }} interviews</small></div></a>
+      <div class="signal-strip">
+        <a routerLink="/matches"><span class="signal-icon lime">◇</span><div><small>Roles to review</small><strong>{{ data?.review_count || 0 }}</strong></div><i>Fresh, ranked opportunities</i></a>
+        <a routerLink="/concierge"><span class="signal-icon coral">!</span><div><small>Decisions waiting</small><strong>{{ data?.pending_approvals || 0 }}</strong></div><i>Your approval is required</i></a>
+        <a routerLink="/pipeline"><span class="signal-icon cyan">↗</span><div><small>Follow-ups due</small><strong>{{ data?.followups_due || 0 }}</strong></div><i>Keep conversations moving</i></a>
+        <a routerLink="/profile"><span class="signal-icon violet">◎</span><div><small>Profile confidence</small><strong>{{ data?.profile_health?.completeness || 0 }}%</strong></div><i>{{ data?.profile_health?.unverified_count || 0 }} facts to verify</i></a>
       </div>
 
-      <div class="dashboard-grid">
-        <section class="panel action-panel">
-          <div class="panel-head"><div><p class="eyebrow">Priorities</p><h2>Recommended next actions</h2></div><a class="text-link" routerLink="/strategy">View strategy →</a></div>
-          <div class="action-list">
-            <div class="list-row recommendation-row" *ngFor="let rec of data?.strategy?.recommendations || []; let index = index">
-              <span class="step-number">{{ index + 1 }}</span>
-              <div class="list-row-main">
-                <strong>{{ rec.title }}</strong>
-                <p>{{ rec.detail }}</p>
-              </div>
-            </div>
-          </div>
-          <div class="empty-state small" *ngIf="!(data?.strategy?.recommendations || []).length"><span class="empty-icon">✓</span><h3>You’re all caught up</h3><p>New recommendations will appear as your search evolves.</p></div>
+      <div class="today-grid">
+        <section class="panel focus-panel">
+          <div class="panel-head"><div><p class="eyebrow">Priority queue</p><h2>The roles worth your attention</h2><p>Already filtered for fit, freshness, and your stated constraints.</p></div><a class="text-link" routerLink="/matches">Review all →</a></div>
+          <a class="focus-job" *ngFor="let job of data?.review_queue; let first = first" routerLink="/matches" [class.lead-job]="first">
+            <div class="company-mark">{{ initials(job.company) }}</div>
+            <div class="focus-main"><div><strong>{{ job.title }}</strong><span>{{ job.company || 'Unknown company' }} · {{ job.location || job.remote_policy }}</span></div><p>{{ job.summary }}</p><div><span class="status-chip" [class.good]="job.eligibility === 'pass'">{{ job.eligibility }} eligibility</span><span class="status-chip">{{ job.confidence }} confidence</span></div></div>
+            <div class="focus-score"><strong>{{ job.score }}</strong><small>fit</small><span>→</span></div>
+          </a>
+          <div class="quiet-state" *ngIf="!data?.review_queue?.length"><span>◇</span><strong>Your opportunity queue is empty</strong><p>Run a configured source or import a job description to start ranking roles.</p><a class="btn-primary" routerLink="/sources">Open sources</a></div>
         </section>
 
-        <section class="panel pipeline-health">
-          <div class="panel-head"><div><p class="eyebrow">Progress</p><h2>Pipeline health</h2></div><a class="text-link" routerLink="/pipeline">Open board →</a></div>
-          <div class="status-grid">
-            <div *ngFor="let status of statusKeys()">
-              <span>{{ statusLabel(status) }}</span>
-              <strong>{{ data.strategy.by_status[status] }}</strong>
-              <span class="status-bar"><i [style.width.%]="statusShare(status)"></i></span>
-            </div>
-          </div>
-          <div class="empty-state small" *ngIf="!statusKeys().length"><span class="empty-icon">▦</span><h3>Your pipeline is ready</h3><p>Create an application from a job match to start tracking progress.</p></div>
-        </section>
-      </div>
+        <aside class="today-rail">
+          <section class="panel profile-pulse">
+            <div class="panel-head"><div><p class="eyebrow">Candidate intelligence</p><h2>Profile pulse</h2></div><strong class="ring" [style.--progress]="data?.profile_health?.completeness || 0">{{ data?.profile_health?.completeness || 0 }}%</strong></div>
+            <div class="profile-question" *ngFor="let question of data?.profile_health?.questions"><span>?</span><p><small>High-value question</small><strong>{{ question }}</strong></p></div>
+            <a class="text-link" routerLink="/profile">Strengthen your profile →</a>
+          </section>
 
-      <section class="quick-start">
-        <div><span class="quick-icon">1</span><div><strong>Build your profile</strong><p>Add career evidence</p></div></div><span>→</span>
-        <div><span class="quick-icon">2</span><div><strong>Score opportunities</strong><p>Import job descriptions</p></div></div><span>→</span>
-        <div><span class="quick-icon">3</span><div><strong>Tailor and apply</strong><p>Create focused materials</p></div></div>
-      </section>
+          <section class="panel action-due">
+            <div class="panel-head"><div><p class="eyebrow">Keep momentum</p><h2>Due actions</h2></div></div>
+            <a class="due-row" *ngFor="let action of data?.due_actions" routerLink="/pipeline"><span>↗</span><div><strong>{{ action.title }}</strong><small>{{ action.detail }} · {{ action.due_at | date:'MMM d' }}</small></div></a>
+            <div class="quiet-state compact" *ngIf="!data?.due_actions?.length"><span>✓</span><strong>Nothing overdue</strong><p>Your pipeline is current.</p></div>
+          </section>
+        </aside>
+      </div>
     </section>
   `,
 })
 export class DashboardComponent implements OnInit {
   data: any;
-
   constructor(private api: ApiService) {}
-
-  ngOnInit(): void {
-    this.api.dashboard().subscribe((data) => this.data = data);
-  }
-
-  statusKeys(): string[] {
-    return Object.keys(this.data?.strategy?.by_status || {});
-  }
-
-  statusShare(status: string): number {
-    const total = Math.max(1, this.data?.applications || 0);
-    return Math.min(100, ((this.data?.strategy?.by_status?.[status] || 0) / total) * 100);
-  }
-
-  statusLabel(status: string): string {
-    return status.replaceAll('_', ' ').replace(/\b\w/g, (character) => character.toUpperCase());
-  }
+  ngOnInit(): void { this.api.today().subscribe((data) => this.data = data); }
+  initials(company: string): string { return (company || 'JS').split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase(); }
 }

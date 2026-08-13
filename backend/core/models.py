@@ -34,6 +34,51 @@ class OwnedModel(models.Model):
         abstract = True
 
 
+class CandidateProfile(models.Model):
+    owner = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='candidate_profile')
+    headline = models.CharField(max_length=220, blank=True)
+    professional_summary = models.TextField(blank=True)
+    target_roles = models.JSONField(default=list, blank=True)
+    target_industries = models.JSONField(default=list, blank=True)
+    location = models.CharField(max_length=220, blank=True)
+    authorized_countries = models.JSONField(default=list, blank=True)
+    work_modes = models.JSONField(default=list, blank=True)
+    employment_types = models.JSONField(default=list, blank=True)
+    minimum_compensation = models.PositiveIntegerField(null=True, blank=True)
+    compensation_currency = models.CharField(max_length=8, default='CAD')
+    excluded_companies = models.JSONField(default=list, blank=True)
+    completeness = models.PositiveSmallIntegerField(default=0)
+    last_reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return self.headline or f'Candidate profile for {self.owner}'
+
+
+class CandidatePreference(OwnedModel):
+    IMPORTANCE_CHOICES = [
+        ('must', 'Must have'),
+        ('strong', 'Strong preference'),
+        ('flexible', 'Flexible'),
+        ('avoid', 'Avoid'),
+    ]
+
+    category = models.CharField(max_length=48, db_index=True)
+    label = models.CharField(max_length=220)
+    value = models.JSONField(default=dict, blank=True)
+    importance = models.CharField(max_length=16, choices=IMPORTANCE_CHOICES, default='flexible', db_index=True)
+    verified_by_user = models.BooleanField(default=False, db_index=True)
+    rationale = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['category', 'label', 'id']
+        indexes = [models.Index(fields=['owner', 'category', 'importance'])]
+
+    def __str__(self) -> str:
+        return self.label
+
+
 class ProfileDocument(OwnedModel):
     KIND_CHOICES = [
         ('resume', 'Resume'),
@@ -104,6 +149,12 @@ class ProfileFact(OwnedModel):
     verified_by_user = models.BooleanField(default=False, db_index=True)
     embedding = models.JSONField(default=list, blank=True)
     metadata = models.JSONField(default=dict, blank=True)
+    lifecycle = models.CharField(max_length=24, default='proposed', db_index=True)
+    evidence_quote = models.TextField(blank=True)
+    strength = models.CharField(max_length=24, default='working')
+    started_on = models.DateField(null=True, blank=True)
+    ended_on = models.DateField(null=True, blank=True)
+    user_notes = models.TextField(blank=True)
 
     class Meta:
         ordering = ['fact_type', 'title', '-id']
@@ -141,6 +192,33 @@ class JobSource(OwnedModel):
         return self.name
 
 
+class SourceRun(OwnedModel):
+    STATUS_CHOICES = [
+        ('queued', 'Queued'),
+        ('running', 'Running'),
+        ('succeeded', 'Succeeded'),
+        ('partial', 'Partial'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    source = models.ForeignKey(JobSource, on_delete=models.CASCADE, related_name='runs')
+    status = models.CharField(max_length=24, choices=STATUS_CHOICES, default='queued', db_index=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    discovered_count = models.PositiveIntegerField(default=0)
+    imported_count = models.PositiveIntegerField(default=0)
+    updated_count = models.PositiveIntegerField(default=0)
+    skipped_count = models.PositiveIntegerField(default=0)
+    error_count = models.PositiveIntegerField(default=0)
+    cursor = models.JSONField(default=dict, blank=True)
+    log = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [models.Index(fields=['owner', 'source', 'status'])]
+
+
 class JobPosting(OwnedModel):
     REMOTE_CHOICES = [
         ('unknown', 'Unknown'),
@@ -165,6 +243,11 @@ class JobPosting(OwnedModel):
     status = models.CharField(max_length=24, default='new', db_index=True)
     posted_at = models.DateTimeField(null=True, blank=True)
     discovered_at = models.DateTimeField(auto_now_add=True)
+    canonical_url = models.URLField(max_length=1000, blank=True)
+    source_external_id = models.CharField(max_length=220, blank=True, db_index=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    freshness_status = models.CharField(max_length=24, default='fresh', db_index=True)
 
     class Meta:
         ordering = ['-discovered_at', '-id']
@@ -180,6 +263,46 @@ class JobPosting(OwnedModel):
     def __str__(self) -> str:
         company = f' at {self.company}' if self.company else ''
         return f'{self.title}{company}'
+
+
+class JobPostingVersion(OwnedModel):
+    job = models.ForeignKey(JobPosting, on_delete=models.CASCADE, related_name='versions')
+    version = models.PositiveIntegerField(default=1)
+    content_hash = models.CharField(max_length=64, db_index=True)
+    description_text = models.TextField()
+    extracted_json = models.JSONField(default=dict, blank=True)
+    source_payload = models.JSONField(default=dict, blank=True)
+    fetched_at = models.DateTimeField()
+    is_current = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        ordering = ['job_id', '-version']
+        constraints = [
+            models.UniqueConstraint(fields=['job', 'version'], name='core_jobversion_job_version_uniq'),
+            models.UniqueConstraint(fields=['job', 'content_hash'], name='core_jobversion_job_hash_uniq'),
+        ]
+
+
+class JobRequirement(OwnedModel):
+    KIND_CHOICES = [
+        ('required', 'Required'),
+        ('preferred', 'Preferred'),
+        ('responsibility', 'Responsibility'),
+        ('credential', 'Credential'),
+    ]
+
+    job = models.ForeignKey(JobPosting, on_delete=models.CASCADE, related_name='requirements')
+    kind = models.CharField(max_length=24, choices=KIND_CHOICES, default='required', db_index=True)
+    category = models.CharField(max_length=48, default='other', db_index=True)
+    text = models.TextField()
+    normalized_value = models.CharField(max_length=220, blank=True)
+    is_hard = models.BooleanField(default=False, db_index=True)
+    weight = models.PositiveSmallIntegerField(default=50)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-is_hard', 'kind', '-weight', 'id']
+        indexes = [models.Index(fields=['owner', 'job', 'kind'])]
 
 
 class JobMatch(OwnedModel):
@@ -201,6 +324,30 @@ class JobMatch(OwnedModel):
 
     def __str__(self) -> str:
         return f'{self.job}: {self.score}'
+
+
+class MatchSignal(OwnedModel):
+    SIGNAL_CHOICES = [
+        ('eligibility', 'Eligibility'),
+        ('skills', 'Skills'),
+        ('evidence', 'Experience evidence'),
+        ('direction', 'Role direction'),
+        ('domain', 'Domain relevance'),
+        ('logistics', 'Logistics'),
+        ('risk', 'Risk'),
+    ]
+
+    match = models.ForeignKey(JobMatch, on_delete=models.CASCADE, related_name='signals')
+    kind = models.CharField(max_length=24, choices=SIGNAL_CHOICES, db_index=True)
+    label = models.CharField(max_length=220)
+    score = models.PositiveSmallIntegerField(default=0)
+    weight = models.PositiveSmallIntegerField(default=0)
+    explanation = models.TextField(blank=True)
+    evidence = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        ordering = ['-weight', 'kind', 'id']
+        indexes = [models.Index(fields=['owner', 'match', 'kind'])]
 
 
 class Resume(OwnedModel):
@@ -245,10 +392,28 @@ class ResumeClaim(OwnedModel):
         ordering = ['resume_id', 'id']
 
 
+class CoverLetter(OwnedModel):
+    title = models.CharField(max_length=220)
+    target_job = models.ForeignKey(JobPosting, on_delete=models.CASCADE, related_name='cover_letters')
+    content_markdown = models.TextField()
+    content_json = models.JSONField(default=dict, blank=True)
+    validation = models.JSONField(default=dict, blank=True)
+    approved = models.BooleanField(default=False, db_index=True)
+    version = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ['-updated_at', '-id']
+        indexes = [models.Index(fields=['owner', 'target_job', 'approved'])]
+
+
 class Application(OwnedModel):
     STATUS_CHOICES = [
+        ('review', 'Review'),
         ('discovered', 'Discovered'),
         ('saved', 'Saved'),
+        ('approved', 'Approved to Prepare'),
+        ('preparing', 'Preparing Materials'),
+        ('materials_ready', 'Materials Ready'),
         ('resume_ready', 'Resume Ready'),
         ('applied', 'Applied'),
         ('follow_up_due', 'Follow-Up Due'),
@@ -299,19 +464,129 @@ class Artifact(OwnedModel):
         ('resume_docx', 'Resume DOCX'),
         ('resume_markdown', 'Resume Markdown'),
         ('cover_letter', 'Cover Letter'),
+        ('cover_letter_pdf', 'Cover Letter PDF'),
+        ('cover_letter_html', 'Cover Letter HTML'),
+        ('resume_html', 'Resume HTML'),
         ('note', 'Note'),
         ('export', 'Export'),
     ]
 
     application = models.ForeignKey(Application, null=True, blank=True, on_delete=models.SET_NULL, related_name='artifacts')
     resume = models.ForeignKey(Resume, null=True, blank=True, on_delete=models.SET_NULL, related_name='artifacts')
+    cover_letter = models.ForeignKey(CoverLetter, null=True, blank=True, on_delete=models.SET_NULL, related_name='artifacts')
     kind = models.CharField(max_length=40, choices=KIND_CHOICES, default='note', db_index=True)
     title = models.CharField(max_length=220)
     file = models.FileField(upload_to=artifact_upload_to, blank=True)
     content_text = models.TextField(blank=True)
     metadata = models.JSONField(default=dict, blank=True)
+    version = models.PositiveIntegerField(default=1)
+    content_hash = models.CharField(max_length=64, blank=True, db_index=True)
+    mime_type = models.CharField(max_length=120, blank=True)
+    approved = models.BooleanField(default=False, db_index=True)
 
     class Meta:
         ordering = ['-created_at', '-id']
         indexes = [models.Index(fields=['owner', 'kind'])]
 
+
+class ConversationThread(OwnedModel):
+    title = models.CharField(max_length=220, default='Job search concierge')
+    status = models.CharField(max_length=24, default='active', db_index=True)
+    context = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-updated_at', '-id']
+
+
+class ConversationMessage(OwnedModel):
+    ROLE_CHOICES = [
+        ('user', 'User'),
+        ('assistant', 'Assistant'),
+        ('system', 'System'),
+        ('tool', 'Tool'),
+    ]
+
+    thread = models.ForeignKey(ConversationThread, on_delete=models.CASCADE, related_name='messages')
+    role = models.CharField(max_length=16, choices=ROLE_CHOICES, db_index=True)
+    content = models.TextField()
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+        indexes = [models.Index(fields=['owner', 'thread', 'created_at'])]
+
+
+class AgentRun(OwnedModel):
+    AGENT_CHOICES = [
+        ('concierge', 'Search Concierge'),
+        ('profile', 'Profile Steward'),
+        ('sourcing', 'Sourcing Scout'),
+        ('matching', 'Match Analyst'),
+        ('application', 'Application Coach'),
+        ('documents', 'Document Tailor'),
+    ]
+    STATUS_CHOICES = [
+        ('queued', 'Queued'),
+        ('running', 'Running'),
+        ('waiting_approval', 'Waiting for approval'),
+        ('succeeded', 'Succeeded'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    thread = models.ForeignKey(ConversationThread, null=True, blank=True, on_delete=models.SET_NULL, related_name='runs')
+    agent = models.CharField(max_length=24, choices=AGENT_CHOICES, db_index=True)
+    objective = models.TextField()
+    status = models.CharField(max_length=24, choices=STATUS_CHOICES, default='queued', db_index=True)
+    input = models.JSONField(default=dict, blank=True)
+    output = models.JSONField(default=dict, blank=True)
+    error = models.TextField(blank=True)
+    idempotency_key = models.CharField(max_length=128, blank=True, db_index=True)
+    celery_task_id = models.CharField(max_length=80, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    model = models.CharField(max_length=80, blank=True)
+    usage = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [models.Index(fields=['owner', 'agent', 'status'])]
+
+
+class AgentStep(OwnedModel):
+    run = models.ForeignKey(AgentRun, on_delete=models.CASCADE, related_name='steps')
+    sequence = models.PositiveIntegerField(default=1)
+    kind = models.CharField(max_length=32, default='tool')
+    name = models.CharField(max_length=120)
+    status = models.CharField(max_length=24, default='running', db_index=True)
+    input = models.JSONField(default=dict, blank=True)
+    output = models.JSONField(default=dict, blank=True)
+    error = models.TextField(blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['run_id', 'sequence', 'id']
+        constraints = [models.UniqueConstraint(fields=['run', 'sequence'], name='core_agentstep_run_sequence_uniq')]
+
+
+class ApprovalRequest(OwnedModel):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    run = models.ForeignKey(AgentRun, null=True, blank=True, on_delete=models.SET_NULL, related_name='approvals')
+    kind = models.CharField(max_length=48, db_index=True)
+    title = models.CharField(max_length=220)
+    prompt = models.TextField()
+    payload = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=24, choices=STATUS_CHOICES, default='pending', db_index=True)
+    response = models.JSONField(default=dict, blank=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [models.Index(fields=['owner', 'status', 'kind'])]

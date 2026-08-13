@@ -1,17 +1,28 @@
 from django.contrib import admin
 
 from .models import (
+    AgentRun,
+    AgentStep,
     Application,
     ApplicationEvent,
+    ApprovalRequest,
     Artifact,
+    CandidatePreference,
+    CandidateProfile,
+    ConversationMessage,
+    ConversationThread,
+    CoverLetter,
     JobMatch,
     JobPosting,
+    JobPostingVersion,
+    JobRequirement,
     JobSource,
     ProfileChunk,
     ProfileDocument,
     ProfileFact,
     Resume,
     ResumeClaim,
+    SourceRun,
 )
 
 
@@ -49,4 +60,14 @@ admin.site.register(ResumeClaim)
 admin.site.register(Application)
 admin.site.register(ApplicationEvent)
 admin.site.register(Artifact)
-
+admin.site.register(CandidateProfile)
+admin.site.register(CandidatePreference)
+admin.site.register(SourceRun)
+admin.site.register(JobPostingVersion)
+admin.site.register(JobRequirement)
+admin.site.register(CoverLetter)
+admin.site.register(ConversationThread)
+admin.site.register(ConversationMessage)
+admin.site.register(AgentRun)
+admin.site.register(AgentStep)
+admin.site.register(ApprovalRequest)

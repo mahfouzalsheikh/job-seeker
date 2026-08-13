@@ -11,8 +11,8 @@ import { ApiService, JobSource } from '../services/api.service';
       <div class="page-head">
         <div>
           <p class="eyebrow">Discovery</p>
-          <h1>Sources</h1>
-          <p class="page-intro">Manage where opportunities enter your workspace.</p>
+          <h1>A quiet, reliable discovery engine.</h1>
+          <p class="page-intro">Connect compliant feeds, refresh them on schedule, and let only fresh, eligible roles reach your inbox.</p>
         </div>
         <button class="btn-secondary" type="button" (click)="load()">↻ Refresh</button>
       </div>
@@ -36,8 +36,9 @@ import { ApiService, JobSource } from '../services/api.service';
           </label>
           <label>
             Configuration <span class="field-hint">JSON</span>
-            <textarea rows="7" [(ngModel)]="configText" name="configText"></textarea>
+            <textarea rows="9" [(ngModel)]="configText" name="configText"></textarea>
           </label>
+          <div class="connector-help"><strong>Connector examples</strong><code>{{ '{' }}"connector":"greenhouse","board_token":"acme","company":"Acme"{{ '}' }}</code><code>{{ '{' }}"connector":"lever","site":"acme","company":"Acme"{{ '}' }}</code><code>{{ '{' }}"connector":"ashby","board":"acme","company":"Acme"{{ '}' }}</code></div>
           <button class="btn-primary" type="button" (click)="create()">Save source</button>
           <p class="muted">{{ message }}</p>
         </section>
@@ -93,9 +94,8 @@ export class SourcesComponent implements OnInit {
   }
 
   run(source: JobSource): void {
-    this.api.runSource(source.id).subscribe((updated) => {
-      source.last_message = updated.last_message;
-      source.last_status = updated.last_status;
-    });
+    source.last_status = 'queued';
+    source.last_message = 'Discovery refresh queued.';
+    this.api.runSource(source.id).subscribe(() => this.message = `${source.name} is refreshing in the background.`);
   }
 }

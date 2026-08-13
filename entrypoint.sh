@@ -7,7 +7,7 @@ if [[ -z "${OPENAI_API_KEY:-}" && -f "/run/secrets/openai_api_key" ]]; then
   export OPENAI_API_KEY="$(cat /run/secrets/openai_api_key)"
 fi
 
-python manage.py migrate --noinput
+python manage.py safe_migrate
 
 if [[ "${DJANGO_SUPERUSER_USERNAME:-}" != "" ]]; then
   python manage.py shell -c "

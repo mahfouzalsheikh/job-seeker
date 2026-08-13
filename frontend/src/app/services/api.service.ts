@@ -31,6 +31,36 @@ export interface ProfileFact {
   confidence: string;
   source_document_title: string;
   verified_by_user: boolean;
+  lifecycle: string;
+  evidence_quote: string;
+  strength: string;
+  user_notes: string;
+}
+
+export interface CandidateProfile {
+  id: number;
+  headline: string;
+  professional_summary: string;
+  target_roles: string[];
+  target_industries: string[];
+  location: string;
+  authorized_countries: string[];
+  work_modes: string[];
+  employment_types: string[];
+  minimum_compensation: number | null;
+  compensation_currency: string;
+  excluded_companies: string[];
+  completeness: number;
+}
+
+export interface CandidatePreference {
+  id: number;
+  category: string;
+  label: string;
+  value: any;
+  importance: string;
+  verified_by_user: boolean;
+  rationale: string;
 }
 
 export interface JobSource {
@@ -52,6 +82,18 @@ export interface JobMatch {
   explanation_json: any;
   missing_requirements: string[];
   supporting_facts: any[];
+  hard_filter_status: string;
+  signals: MatchSignal[];
+}
+
+export interface MatchSignal {
+  id: number;
+  kind: string;
+  label: string;
+  score: number;
+  weight: number;
+  explanation: string;
+  evidence: any[];
 }
 
 export interface JobPosting {
@@ -67,6 +109,11 @@ export interface JobPosting {
   source_url: string;
   application_url: string;
   status: string;
+  freshness_status: string;
+  last_seen_at: string | null;
+  posted_at: string | null;
+  requirements: any[];
+  versions: any[];
   match?: JobMatch;
 }
 
@@ -81,6 +128,68 @@ export interface Resume {
   target_job_title: string;
   validation: any;
   approved: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CoverLetter {
+  id: number;
+  title: string;
+  target_job: number;
+  target_job_title: string;
+  content_markdown: string;
+  content_json: any;
+  validation: any;
+  approved: boolean;
+  version: number;
+}
+
+export interface Artifact {
+  id: number;
+  kind: string;
+  title: string;
+  file_url: string;
+  mime_type: string;
+  metadata: any;
+  approved: boolean;
+}
+
+export interface ApprovalRequest {
+  id: number;
+  run: number | null;
+  kind: string;
+  title: string;
+  prompt: string;
+  payload: any;
+  status: string;
+  response: any;
+  created_at: string;
+}
+
+export interface AgentRun {
+  id: number;
+  thread: number | null;
+  agent: string;
+  objective: string;
+  status: string;
+  output: any;
+  error: string;
+  steps: any[];
+}
+
+export interface ConversationMessage {
+  id: number;
+  role: string;
+  content: string;
+  metadata: any;
+  created_at: string;
+}
+
+export interface ConversationThread {
+  id: number;
+  title: string;
+  status: string;
+  messages: ConversationMessage[];
   created_at: string;
   updated_at: string;
 }
@@ -110,12 +219,40 @@ export class ApiService {
     return this.http.get(`${environment.apiBaseUrl}/dashboard/`);
   }
 
+  today(): Observable<any> {
+    return this.http.get(`${environment.apiBaseUrl}/today/`);
+  }
+
   strategy(): Observable<any> {
     return this.http.get(`${environment.apiBaseUrl}/strategy/`);
   }
 
   documents(): Observable<Paged<ProfileDocument>> {
     return this.http.get<Paged<ProfileDocument>>(`${environment.apiBaseUrl}/profile/documents/`);
+  }
+
+  candidateProfile(): Observable<CandidateProfile> {
+    return this.http.get<CandidateProfile>(`${environment.apiBaseUrl}/profile/`);
+  }
+
+  updateCandidateProfile(payload: Partial<CandidateProfile>): Observable<CandidateProfile> {
+    return this.http.patch<CandidateProfile>(`${environment.apiBaseUrl}/profile/`, payload);
+  }
+
+  preferences(): Observable<Paged<CandidatePreference>> {
+    return this.http.get<Paged<CandidatePreference>>(`${environment.apiBaseUrl}/profile/preferences/`);
+  }
+
+  createPreference(payload: Partial<CandidatePreference>): Observable<CandidatePreference> {
+    return this.http.post<CandidatePreference>(`${environment.apiBaseUrl}/profile/preferences/`, payload);
+  }
+
+  updatePreference(id: number, payload: Partial<CandidatePreference>): Observable<CandidatePreference> {
+    return this.http.patch<CandidatePreference>(`${environment.apiBaseUrl}/profile/preferences/${id}/`, payload);
+  }
+
+  deletePreference(id: number): Observable<void> {
+    return this.http.delete<void>(`${environment.apiBaseUrl}/profile/preferences/${id}/`);
   }
 
   createDocument(payload: FormData): Observable<ProfileDocument> {
@@ -146,8 +283,8 @@ export class ApiService {
     return this.http.post<JobSource>(`${environment.apiBaseUrl}/sources/`, payload);
   }
 
-  runSource(id: number): Observable<JobSource> {
-    return this.http.post<JobSource>(`${environment.apiBaseUrl}/sources/${id}/run/`, {});
+  runSource(id: number): Observable<any> {
+    return this.http.post<any>(`${environment.apiBaseUrl}/sources/${id}/run/`, {});
   }
 
   jobs(params: Record<string, string> = {}): Observable<Paged<JobPosting>> {
@@ -166,6 +303,10 @@ export class ApiService {
     return this.http.post<ApplicationRecord>(`${environment.apiBaseUrl}/jobs/${jobId}/create_application/`, {});
   }
 
+  requestPreparation(jobId: number): Observable<AgentRun> {
+    return this.http.post<AgentRun>(`${environment.apiBaseUrl}/jobs/${jobId}/request_preparation/`, {});
+  }
+
   resumes(params: Record<string, string> = {}): Observable<Paged<Resume>> {
     return this.http.get<Paged<Resume>>(`${environment.apiBaseUrl}/resumes/`, { params: new HttpParams({ fromObject: params }) });
   }
@@ -182,6 +323,14 @@ export class ApiService {
     return this.http.post<Resume>(`${environment.apiBaseUrl}/resumes/${id}/approve/`, {});
   }
 
+  coverLetters(params: Record<string, string> = {}): Observable<Paged<CoverLetter>> {
+    return this.http.get<Paged<CoverLetter>>(`${environment.apiBaseUrl}/cover-letters/`, { params: new HttpParams({ fromObject: params }) });
+  }
+
+  approveCoverLetter(id: number): Observable<CoverLetter> {
+    return this.http.post<CoverLetter>(`${environment.apiBaseUrl}/cover-letters/${id}/approve/`, {});
+  }
+
   exportResumeMarkdown(id: number): Observable<Blob> {
     return this.http.get(`${environment.apiBaseUrl}/resumes/${id}/export_markdown/`, { responseType: 'blob' });
   }
@@ -192,5 +341,38 @@ export class ApiService {
 
   updateApplication(id: number, payload: Partial<ApplicationRecord>): Observable<ApplicationRecord> {
     return this.http.patch<ApplicationRecord>(`${environment.apiBaseUrl}/applications/${id}/`, payload);
+  }
+
+  requestRender(applicationId: number): Observable<ApprovalRequest> {
+    return this.http.post<ApprovalRequest>(`${environment.apiBaseUrl}/applications/${applicationId}/request_render/`, {});
+  }
+
+  artifacts(): Observable<Paged<Artifact>> {
+    return this.http.get<Paged<Artifact>>(`${environment.apiBaseUrl}/artifacts/`);
+  }
+
+  approvals(status = ''): Observable<Paged<ApprovalRequest>> {
+    const params = status ? new HttpParams().set('status', status) : undefined;
+    return this.http.get<Paged<ApprovalRequest>>(`${environment.apiBaseUrl}/approvals/`, { params });
+  }
+
+  decideApproval(id: number, approved: boolean, response: any = {}): Observable<ApprovalRequest> {
+    return this.http.post<ApprovalRequest>(`${environment.apiBaseUrl}/approvals/${id}/decide/`, { approved, response });
+  }
+
+  conversations(): Observable<Paged<ConversationThread>> {
+    return this.http.get<Paged<ConversationThread>>(`${environment.apiBaseUrl}/conversations/`);
+  }
+
+  createConversation(): Observable<ConversationThread> {
+    return this.http.post<ConversationThread>(`${environment.apiBaseUrl}/conversations/`, { title: 'Job search concierge', status: 'active', context: {} });
+  }
+
+  conversation(id: number): Observable<ConversationThread> {
+    return this.http.get<ConversationThread>(`${environment.apiBaseUrl}/conversations/${id}/`);
+  }
+
+  sendMessage(threadId: number, content: string): Observable<AgentRun> {
+    return this.http.post<AgentRun>(`${environment.apiBaseUrl}/conversations/${threadId}/send/`, { content });
   }
 }

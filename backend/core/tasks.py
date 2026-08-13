@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from celery import shared_task
 
-from .models import JobPosting, ProfileDocument
+from .models import AgentRun, JobPosting, JobSource, ProfileDocument, SourceRun
 from .realtime_events import publish_user_event
 from .services import ingest_profile_document, recompute_match
 
@@ -36,3 +36,40 @@ def recompute_all_matches_task(owner_id: int) -> dict:
     publish_user_event(owner_id, 'matches_recomputed', {'count': count})
     return {'count': count}
 
+
+@shared_task
+def execute_source_run_task(run_id: int) -> dict:
+    from .domain.sourcing import execute_source_run
+
+    run = SourceRun.objects.select_related('owner', 'source').get(pk=run_id)
+    publish_user_event(run.owner_id, 'source_run_started', {'source_run_id': run.id, 'source_id': run.source_id})
+    execute_source_run(run)
+    payload = {
+        'source_run_id': run.id,
+        'source_id': run.source_id,
+        'status': run.status,
+        'imported': run.imported_count,
+        'updated': run.updated_count,
+        'errors': run.error_count,
+    }
+    publish_user_event(run.owner_id, 'source_run_finished', payload)
+    return payload
+
+
+@shared_task
+def refresh_enabled_sources_task() -> dict:
+    queued = 0
+    for source in JobSource.objects.filter(enabled=True).iterator():
+        run = SourceRun.objects.create(owner=source.owner, source=source)
+        execute_source_run_task.delay(run.id)
+        queued += 1
+    return {'queued': queued}
+
+
+@shared_task
+def execute_agent_run_task(run_id: int) -> dict:
+    from .domain.orchestration import execute_agent_run
+
+    run = AgentRun.objects.select_related('owner', 'thread').get(pk=run_id)
+    execute_agent_run(run)
+    return {'run_id': run.id, 'status': run.status, 'output': run.output, 'error': run.error}

@@ -15,9 +15,9 @@ interface StatusDef {
     <section class="page">
       <div class="page-head">
         <div>
-          <p class="eyebrow">Tracker</p>
-          <h1>Pipeline</h1>
-          <p class="page-intro">Keep every opportunity, follow-up, and conversation moving forward.</p>
+          <p class="eyebrow">Application operations</p>
+          <h1>Every stage should create the next useful action.</h1>
+          <p class="page-intro">Track the opportunity, exact material versions, conversations, and follow-up commitments in one audit trail.</p>
         </div>
         <button class="btn-secondary" type="button" (click)="load()">↻ Refresh</button>
       </div>
@@ -70,9 +70,10 @@ interface StatusDef {
           <textarea rows="5" [(ngModel)]="selected.notes" name="notes"></textarea>
         </label>
 
-        <div class="action-row">
-          <button class="btn-primary" type="button" (click)="saveSelected()">Save</button>
-          <span class="muted">{{ message }}</span>
+          <div class="action-row">
+            <button class="btn-primary" type="button" (click)="saveSelected()">Save</button>
+            <button class="btn-secondary" type="button" (click)="requestRender()" *ngIf="selected.resume">Render PDF bundle</button>
+            <span class="muted">{{ message }}</span>
         </div>
 
         <div class="section-divider"><span>Activity</span></div>
@@ -95,8 +96,12 @@ export class PipelineComponent implements OnInit {
   followUpLocal = '';
   message = '';
   statuses: StatusDef[] = [
+    { key: 'review', label: 'Review' },
     { key: 'discovered', label: 'Discovered' },
     { key: 'saved', label: 'Saved' },
+    { key: 'approved', label: 'Approved' },
+    { key: 'preparing', label: 'Preparing' },
+    { key: 'materials_ready', label: 'Materials Ready' },
     { key: 'resume_ready', label: 'Resume Ready' },
     { key: 'applied', label: 'Applied' },
     { key: 'follow_up_due', label: 'Follow-Up Due' },
@@ -156,5 +161,10 @@ export class PipelineComponent implements OnInit {
       this.syncFollowUpLocal();
       this.load();
     });
+  }
+
+  requestRender(): void {
+    if (!this.selected) return;
+    this.api.requestRender(this.selected.id).subscribe(() => this.message = 'PDF rendering approval is waiting in Concierge.');
   }
 }

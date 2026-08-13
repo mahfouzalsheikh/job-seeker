@@ -12,6 +12,10 @@ from core.models import (
     Application,
     ApplicationEvent,
     Artifact,
+    CandidatePreference,
+    CandidateProfile,
+    ConversationMessage,
+    ConversationThread,
     JobMatch,
     JobPosting,
     JobSource,
@@ -36,15 +40,19 @@ class Command(BaseCommand):
         username = options['username']
         user = self.ensure_user(username)
         self.clear_demo_data(user)
+        self.create_candidate_context(user)
         sources = self.create_sources(user)
         document = self.create_profile(user)
         facts = list(ProfileFact.objects.filter(owner=user, metadata__demo=True))
         canonical = self.create_canonical_resume(user, document)
         jobs = self.create_jobs(user, sources)
-        matches = [self.create_match(user, job, facts) for job in jobs]
+        from core.domain.matching import recompute_match
+
+        matches = [recompute_match(job) for job in jobs]
         resumes = self.create_tailored_resumes(user, canonical, jobs)
         self.create_applications(user, jobs, resumes)
         self.create_artifacts(user, resumes)
+        self.create_concierge(user)
         self.stdout.write(self.style.SUCCESS(
             f'Seeded demo data for {username}: '
             f'{len(facts)} facts, {len(jobs)} jobs, {len(matches)} matches, {len(resumes) + 1} resumes.'
@@ -62,6 +70,8 @@ class Command(BaseCommand):
         )
 
     def clear_demo_data(self, user) -> None:
+        ConversationThread.objects.filter(owner=user, context__demo=True).delete()
+        CandidatePreference.objects.filter(owner=user, rationale__contains='[demo]').delete()
         Artifact.objects.filter(owner=user, metadata__demo=True).delete()
         ApplicationEvent.objects.filter(owner=user, metadata__demo=True).delete()
         Application.objects.filter(owner=user, notes__contains='[demo]').delete()
@@ -72,6 +82,37 @@ class Command(BaseCommand):
         ProfileChunk.objects.filter(owner=user, metadata__demo=True).delete()
         ProfileDocument.objects.filter(owner=user, metadata__demo=True).delete()
         JobSource.objects.filter(owner=user, config__demo=True).delete()
+
+    def create_candidate_context(self, user) -> None:
+        CandidateProfile.objects.update_or_create(
+            owner=user,
+            defaults={
+                'headline': 'Senior backend and AI platform engineer',
+                'professional_summary': 'Product-minded platform engineer who builds dependable APIs, asynchronous workflows, and reviewable AI systems.',
+                'target_roles': ['Staff Platform Engineer', 'Senior Backend Engineer', 'Product Engineer'],
+                'target_industries': ['Developer tools', 'AI platforms', 'Workflow automation'],
+                'location': 'Toronto, Canada',
+                'authorized_countries': ['Canada'],
+                'work_modes': ['remote', 'hybrid'],
+                'employment_types': ['full-time'],
+                'minimum_compensation': 150000,
+                'compensation_currency': 'CAD',
+                'excluded_companies': [],
+                'completeness': 90,
+                'last_reviewed_at': timezone.now(),
+            },
+        )
+        rows = [
+            ('role', 'Hands-on technical work', 'must'),
+            ('work_mode', 'Remote or hybrid', 'strong'),
+            ('culture', 'Strong engineering practices', 'strong'),
+            ('role', 'Pure people management', 'avoid'),
+        ]
+        for category, label, importance in rows:
+            CandidatePreference.objects.create(
+                owner=user, category=category, label=label, importance=importance,
+                value={'label': label}, verified_by_user=True, rationale='Seeded for the demo journey. [demo]',
+            )
 
     def create_sources(self, user) -> dict[str, JobSource]:
         now = timezone.now()
@@ -148,6 +189,8 @@ Prefers remote or hybrid backend/platform roles in Canada or US time zones with 
                 source_document=document,
                 source_chunk=chunk,
                 verified_by_user=verified,
+                lifecycle='verified' if verified else 'proposed',
+                evidence_quote=statement,
                 embedding=heuristic_embedding(f'{title}\n{statement}'),
                 metadata=DEMO_META,
             )
@@ -442,3 +485,14 @@ Senior backend engineer positioned for {job.title} at {job.company}, emphasizing
                 metadata={**DEMO_META, 'source': 'seed_demo'},
             )
 
+    def create_concierge(self, user) -> None:
+        thread = ConversationThread.objects.create(
+            owner=user, title='Job search concierge', context=DEMO_META,
+        )
+        ConversationMessage.objects.create(
+            owner=user,
+            thread=thread,
+            role='assistant',
+            content='I found several promising roles and ranked them against your verified evidence. The strongest opportunities are ready for review.',
+            metadata={'agent': 'concierge', **DEMO_META},
+        )

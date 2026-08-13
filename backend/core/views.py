@@ -14,21 +14,33 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import (
+    AgentRun,
     Application,
     ApplicationEvent,
+    ApprovalRequest,
     Artifact,
+    CandidatePreference,
+    ConversationThread,
+    CoverLetter,
     JobMatch,
     JobPosting,
     JobSource,
     ProfileDocument,
     ProfileFact,
     Resume,
+    SourceRun,
 )
 from .realtime_events import publish_user_event
 from .serializers import (
+    AgentRunSerializer,
     ApplicationEventSerializer,
     ApplicationSerializer,
+    ApprovalRequestSerializer,
     ArtifactSerializer,
+    CandidatePreferenceSerializer,
+    CandidateProfileSerializer,
+    ConversationThreadSerializer,
+    CoverLetterSerializer,
     JobImportSerializer,
     JobMatchSerializer,
     JobPostingSerializer,
@@ -37,9 +49,10 @@ from .serializers import (
     ProfileFactSerializer,
     ResumeSerializer,
     ResumeTailorSerializer,
+    SourceRunSerializer,
 )
 from .services import create_tailored_resume, dashboard, generate_strategy, import_job_posting, ingest_profile_document, recompute_match
-from .tasks import ingest_profile_document_task, recompute_all_matches_task, recompute_job_match_task
+from .tasks import execute_agent_run_task, execute_source_run_task, ingest_profile_document_task, recompute_all_matches_task, recompute_job_match_task
 
 
 def enqueue_profile_ingestion(document: ProfileDocument) -> dict:
@@ -84,6 +97,40 @@ class ProfileDocumentViewSet(OwnedViewSet):
         return Response({'status': document.status, **result})
 
 
+class CandidateProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self, request):
+        from .domain.profiles import candidate_profile
+
+        return candidate_profile(request.user)
+
+    def get(self, request):
+        return Response(CandidateProfileSerializer(self.get_object(request)).data)
+
+    def patch(self, request):
+        profile = self.get_object(request)
+        serializer = CandidateProfileSerializer(profile, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(last_reviewed_at=timezone.now())
+        from .domain.profiles import compute_profile_completeness
+
+        compute_profile_completeness(request.user)
+        profile.refresh_from_db()
+        publish_user_event(request.user.id, 'candidate_profile_updated', {'profile_id': profile.id})
+        return Response(CandidateProfileSerializer(profile).data)
+
+
+class CandidatePreferenceViewSet(OwnedViewSet):
+    serializer_class = CandidatePreferenceSerializer
+    queryset = CandidatePreference.objects.all()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        category = self.request.query_params.get('category')
+        return qs.filter(category=category) if category else qs
+
+
 class ProfileFactViewSet(OwnedViewSet):
     serializer_class = ProfileFactSerializer
     queryset = ProfileFact.objects.select_related('source_document', 'source_chunk').all()
@@ -118,7 +165,8 @@ class ProfileFactViewSet(OwnedViewSet):
     def verify(self, request, pk=None):
         fact = self.get_object()
         fact.verified_by_user = True
-        fact.save(update_fields=['verified_by_user', 'updated_at'])
+        fact.lifecycle = 'verified'
+        fact.save(update_fields=['verified_by_user', 'lifecycle', 'updated_at'])
         publish_user_event(request.user.id, 'profile_fact_updated', {'fact_id': fact.id})
         return Response(self.get_serializer(fact).data)
 
@@ -133,12 +181,28 @@ class JobSourceViewSet(OwnedViewSet):
     @action(detail=True, methods=['post'])
     def run(self, request, pk=None):
         source = self.get_object()
-        source.last_run_at = timezone.now()
+        run = SourceRun.objects.create(owner=request.user, source=source)
         source.last_status = 'queued'
-        source.last_message = 'Source connector hooks are ready; manual import is implemented in MVP.'
-        source.save(update_fields=['last_run_at', 'last_status', 'last_message', 'updated_at'])
-        publish_user_event(request.user.id, 'source_run_finished', {'source_id': source.id, 'created_jobs': 0})
-        return Response(self.get_serializer(source).data)
+        source.last_message = 'Discovery refresh queued.'
+        source.save(update_fields=['last_status', 'last_message', 'updated_at'])
+        try:
+            task = execute_source_run_task.delay(run.id)
+            payload = {'mode': 'async', 'task_id': task.id}
+        except Exception:
+            from .domain.sourcing import execute_source_run
+
+            execute_source_run(run)
+            payload = {'mode': 'sync'}
+        return Response({**SourceRunSerializer(run).data, **payload}, status=status.HTTP_202_ACCEPTED)
+
+
+class SourceRunViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = SourceRunSerializer
+    queryset = SourceRun.objects.select_related('source').all()
+
+    def get_queryset(self):
+        return self.queryset.filter(owner=self.request.user)
 
 
 class JobPostingViewSet(OwnedViewSet):
@@ -197,6 +261,28 @@ class JobPostingViewSet(OwnedViewSet):
         )
         return Response(ApplicationSerializer(application, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'])
+    def request_preparation(self, request, pk=None):
+        from .domain.orchestration import default_thread
+
+        job = self.get_object()
+        run = AgentRun.objects.create(
+            owner=request.user,
+            thread=default_thread(request.user),
+            agent='documents',
+            objective=f'Prepare application materials for {job.title}',
+            input={'job_id': job.id, 'intent': 'prepare_materials'},
+        )
+        try:
+            task = execute_agent_run_task.delay(run.id)
+            run.celery_task_id = task.id
+            run.save(update_fields=['celery_task_id', 'updated_at'])
+        except Exception:
+            from .domain.orchestration import execute_agent_run
+
+            execute_agent_run(run)
+        return Response(AgentRunSerializer(run).data, status=status.HTTP_202_ACCEPTED)
+
 
 class JobMatchViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
@@ -248,6 +334,9 @@ class ResumeViewSet(OwnedViewSet):
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         resume = self.get_object()
+        unsupported = (resume.validation or {}).get('unsupported_claims', [])
+        if unsupported and not request.data.get('accept_risk'):
+            return Response({'detail': 'Resolve unsupported claims or explicitly accept the risk.', 'unsupported_claims': unsupported}, status=status.HTTP_409_CONFLICT)
         resume.approved = True
         resume.save(update_fields=['approved', 'updated_at'])
         return Response(self.get_serializer(resume).data)
@@ -259,6 +348,26 @@ class ResumeViewSet(OwnedViewSet):
         filename = f'{resume.title.lower().replace(" ", "-")}.md'
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
+
+
+class CoverLetterViewSet(OwnedViewSet):
+    serializer_class = CoverLetterSerializer
+    queryset = CoverLetter.objects.select_related('target_job').all()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        job_id = self.request.query_params.get('job')
+        return qs.filter(target_job_id=job_id) if job_id else qs
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        letter = self.get_object()
+        unsupported = (letter.validation or {}).get('unsupported_claims', [])
+        if unsupported and not request.data.get('accept_risk'):
+            return Response({'detail': 'Resolve unsupported claims or explicitly accept the risk.'}, status=status.HTTP_409_CONFLICT)
+        letter.approved = True
+        letter.save(update_fields=['approved', 'updated_at'])
+        return Response(self.get_serializer(letter).data)
 
 
 class ApplicationViewSet(OwnedViewSet):
@@ -298,6 +407,30 @@ class ApplicationViewSet(OwnedViewSet):
             )
             publish_user_event(self.request.user.id, 'application_updated', {'application_id': application.id, 'status': application.status})
 
+    @action(detail=True, methods=['post'])
+    def request_render(self, request, pk=None):
+        from .domain.orchestration import default_thread
+
+        application = self.get_object()
+        cover_letter = CoverLetter.objects.filter(owner=request.user, target_job=application.job).order_by('-version').first()
+        if not application.resume or not application.resume.approved or (cover_letter and not cover_letter.approved):
+            return Response(
+                {'detail': 'Approve the current resume and cover letter before rendering the final bundle.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        run = AgentRun.objects.create(
+            owner=request.user, thread=default_thread(request.user), agent='documents',
+            objective=f'Render the approved application bundle for {application.job.title}',
+            input={'application_id': application.id, 'intent': 'render_bundle'},
+            status='waiting_approval',
+        )
+        approval = ApprovalRequest.objects.create(
+            owner=request.user, run=run, kind='render_bundle', title='Render final PDF bundle',
+            prompt='Render the current resume and cover letter into final PDF artifacts?',
+            payload={'application_id': application.id},
+        )
+        return Response(ApprovalRequestSerializer(approval).data, status=status.HTTP_201_CREATED)
+
 
 class ApplicationEventViewSet(OwnedViewSet):
     serializer_class = ApplicationEventSerializer
@@ -316,11 +449,80 @@ class ArtifactViewSet(OwnedViewSet):
     queryset = Artifact.objects.select_related('application', 'resume').all()
 
 
+class ConversationThreadViewSet(OwnedViewSet):
+    serializer_class = ConversationThreadSerializer
+    queryset = ConversationThread.objects.prefetch_related('messages').all()
+
+    @action(detail=True, methods=['post'])
+    def send(self, request, pk=None):
+        from .domain.orchestration import create_concierge_run, execute_agent_run
+
+        thread = self.get_object()
+        content = str(request.data.get('content', '')).strip()
+        if not content:
+            return Response({'content': ['This field is required.']}, status=status.HTTP_400_BAD_REQUEST)
+        run = create_concierge_run(request.user, message=content, thread=thread)
+        try:
+            task = execute_agent_run_task.delay(run.id)
+            run.celery_task_id = task.id
+            run.save(update_fields=['celery_task_id', 'updated_at'])
+        except Exception:
+            execute_agent_run(run)
+        return Response(AgentRunSerializer(run).data, status=status.HTTP_202_ACCEPTED)
+
+
+class AgentRunViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = AgentRunSerializer
+    queryset = AgentRun.objects.select_related('thread').prefetch_related('steps').all()
+
+    def get_queryset(self):
+        return self.queryset.filter(owner=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        run = self.get_object()
+        if run.status not in {'succeeded', 'failed', 'cancelled'}:
+            run.status = 'cancelled'
+            run.completed_at = timezone.now()
+            run.save(update_fields=['status', 'completed_at', 'updated_at'])
+        return Response(self.get_serializer(run).data)
+
+
+class ApprovalRequestViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ApprovalRequestSerializer
+    queryset = ApprovalRequest.objects.select_related('run').all()
+
+    def get_queryset(self):
+        qs = self.queryset.filter(owner=self.request.user)
+        status_value = self.request.query_params.get('status')
+        return qs.filter(status=status_value) if status_value else qs
+
+    @action(detail=True, methods=['post'])
+    def decide(self, request, pk=None):
+        from .domain.orchestration import decide_approval
+
+        approval = self.get_object()
+        approved = request.data.get('approved') is True
+        decide_approval(approval, approved=approved, response=request.data.get('response') or {})
+        return Response(self.get_serializer(approval).data)
+
+
 class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         return Response(dashboard(request.user))
+
+
+class TodayView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .domain.briefing import today_briefing
+
+        return Response(today_briefing(request.user))
 
 
 class StrategyView(APIView):

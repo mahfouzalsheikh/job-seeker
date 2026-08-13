@@ -1,6 +1,6 @@
 # Job Search Studio
 
-Private job-search workbench for profile ingestion, job matching, resume tailoring, application tracking, and strategy feedback.
+Private, agentic job-search operating system for candidate intelligence, compliant sourcing, explainable matching, application operations, and evidence-backed materials.
 
 The stack intentionally follows the sibling Drawing Algorithms project:
 
@@ -10,6 +10,7 @@ The stack intentionally follows the sibling Drawing Algorithms project:
 - Redis
 - Celery workers and beat
 - Django Channels realtime updates
+- Gotenberg PDF rendering
 - Docker Compose and Nginx
 - OpenAI API called from the backend only
 
@@ -25,7 +26,29 @@ The stack intentionally follows the sibling Drawing Algorithms project:
 - Export resume markdown.
 - Create application records from jobs.
 - Move applications through a pipeline.
+- Maintain a living search brief with target roles, industries, authorization, work modes, compensation, and explicit preference strength.
+- Run Greenhouse, Lever, Ashby, and RSS discovery connectors with durable source-run history.
+- Review decomposed fit signals separately from hard eligibility gates.
+- Collaborate with six bounded specialist workflows through the Search Concierge.
+- Approve consequential actions through a durable human-in-the-loop queue.
+- Generate both resumes and cover letters, validate claims, and render final PDFs through Gotenberg.
 - View strategy recommendations based on matches, profile quality, and application history.
+
+## Product Loop
+
+```text
+Candidate evidence + explicit preferences
+  -> scheduled compliant discovery
+  -> freshness, versioning, normalization, and dedupe
+  -> eligibility gate + decomposed fit score + citations
+  -> user approves an opportunity
+  -> resume + cover-letter plan and draft
+  -> claim review and document approval
+  -> HTML + Gotenberg PDF artifacts
+  -> tracked application, follow-up, interview, and outcome
+```
+
+The specialist roles are Profile Steward, Sourcing Scout, Match Analyst, Application Coach, Document Tailor, and Search Concierge. They are durable workflows over typed Django domain operations—not independent services with private state.
 
 ## Local Docker Run
 
@@ -93,32 +116,22 @@ The Angular dev server runs on `http://localhost:4200`. For full API access in d
 
 - OpenAI keys must stay in backend environment variables.
 - Generated resume claims should be reviewed before use.
-- Scraping is not automated in the MVP beyond source records and task hooks. Manual job import is implemented first to avoid compliance issues.
+- Discovery is limited to manual imports and configured public ATS/RSS endpoints; the system does not bypass authentication, anti-bot controls, or site terms.
 - The deterministic fallback path keeps the app usable even if OpenAI calls fail.
 
-## Current MVP Loop
+## Primary Experience
 
 ```text
-Profile
-  -> add resume or notes
-  -> extract facts
-  -> verify facts
-
-Matches
-  -> paste job description
-  -> extract job
-  -> compute score
-  -> review gaps and evidence
-
-Resume Lab
-  -> generate tailored draft
-  -> review validation
-  -> approve/export markdown
-
-Pipeline
-  -> create application
-  -> update status and follow-up
-
-Strategy
-  -> review next-action guidance
+Today
+  -> review a short priority queue and due actions
+Concierge
+  -> ask questions, delegate bounded work, decide approvals
+Opportunities
+  -> inspect eligibility, score signals, evidence, and gaps
+Candidate Profile
+  -> maintain search brief, preferences, facts, and source evidence
+Applications
+  -> move through stages with versioned events and next actions
+Document Studio
+  -> review resume and cover letter, approve claims, render PDF bundle
 ```

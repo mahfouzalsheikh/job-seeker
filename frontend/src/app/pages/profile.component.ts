@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
-import { ApiService, ProfileDocument, ProfileFact } from '../services/api.service';
+import { ApiService, CandidatePreference, CandidateProfile, ProfileDocument, ProfileFact } from '../services/api.service';
 import { RealtimeService } from '../services/realtime.service';
 
 @Component({
@@ -12,24 +12,49 @@ import { RealtimeService } from '../services/realtime.service';
     <section class="page">
       <div class="page-head">
         <div>
-          <p class="eyebrow">Knowledge Base</p>
-          <h1>Profile</h1>
-          <p class="page-intro">Build a trusted library of career evidence for matching and tailored resumes.</p>
+          <p class="eyebrow">Candidate intelligence</p>
+          <h1>The system should know the whole story.</h1>
+          <p class="page-intro">Build a truthful, living model of your experience, capabilities, goals, constraints, and preferences.</p>
         </div>
         <button class="btn-secondary" type="button" (click)="load()">↻ Refresh</button>
       </div>
 
       <div class="summary-strip">
+        <div><span>Profile confidence</span><strong>{{ profile?.completeness || 0 }}%</strong></div>
         <div><span>Profile facts</span><strong>{{ facts.length }}</strong></div>
         <div><span>Verified</span><strong>{{ verifiedCount() }}</strong></div>
         <div><span>Source documents</span><strong>{{ documents.length }}</strong></div>
       </div>
 
       <div class="tabs" role="tablist" aria-label="Profile sections">
+        <button type="button" role="tab" [class.active]="activeTab === 'overview'" [attr.aria-selected]="activeTab === 'overview'" (click)="activeTab = 'overview'">Search brief</button>
         <button type="button" role="tab" [class.active]="activeTab === 'facts'" [attr.aria-selected]="activeTab === 'facts'" (click)="activeTab = 'facts'">Profile facts <span>{{ facts.length }}</span></button>
+        <button type="button" role="tab" [class.active]="activeTab === 'preferences'" [attr.aria-selected]="activeTab === 'preferences'" (click)="activeTab = 'preferences'">Preferences <span>{{ preferences.length }}</span></button>
         <button type="button" role="tab" [class.active]="activeTab === 'sources'" [attr.aria-selected]="activeTab === 'sources'" (click)="activeTab = 'sources'">Source material <span>{{ documents.length }}</span></button>
       </div>
       <p class="feedback-banner" *ngIf="message">{{ message }}</p>
+
+      <section class="panel profile-brief" *ngIf="activeTab === 'overview' && profile">
+        <div class="panel-head"><div><h2>Your search brief</h2><p>These explicit choices drive eligibility, ranking, and the concierge’s recommendations.</p></div><span class="confidence-badge">{{ profile.completeness }}% complete</span></div>
+        <div class="edit-grid">
+          <label>Professional headline<input [(ngModel)]="profile.headline" name="headline" placeholder="Senior platform engineer building dependable AI products"></label>
+          <label>Current location<input [(ngModel)]="profile.location" name="profileLocation" placeholder="Toronto, Canada"></label>
+          <label>Target roles <span class="field-hint">Comma separated</span><input [(ngModel)]="targetRolesText" name="targetRoles" placeholder="Staff Engineer, Engineering Lead"></label>
+          <label>Target industries <span class="field-hint">Comma separated</span><input [(ngModel)]="targetIndustriesText" name="targetIndustries" placeholder="Developer tools, AI platforms"></label>
+          <label>Authorized countries <span class="field-hint">Comma separated</span><input [(ngModel)]="authorizedCountriesText" name="authorizedCountries" placeholder="Canada"></label>
+          <label>Work modes <span class="field-hint">Comma separated</span><input [(ngModel)]="workModesText" name="workModes" placeholder="remote, hybrid"></label>
+          <label>Minimum compensation<input type="number" [(ngModel)]="profile.minimum_compensation" name="minimumCompensation" placeholder="150000"></label>
+          <label>Currency<select [(ngModel)]="profile.compensation_currency" name="compensationCurrency"><option>CAD</option><option>USD</option><option>EUR</option><option>GBP</option></select></label>
+        </div>
+        <label>Professional summary<textarea rows="6" [(ngModel)]="profile.professional_summary" name="professionalSummary" placeholder="Describe what you are great at, the work you enjoy, and what you want next."></textarea></label>
+        <div class="action-row"><button class="btn-primary" type="button" (click)="saveProfile()">Save search brief</button><span class="muted">Changes immediately affect future scoring.</span></div>
+      </section>
+
+      <section class="panel" *ngIf="activeTab === 'preferences'">
+        <div class="panel-head"><div><h2>Preferences and boundaries</h2><p>Make intent explicit: must-have, strong preference, flexible, or avoid.</p></div></div>
+        <div class="preference-form"><input [(ngModel)]="newPreference.label" name="preferenceLabel" placeholder="e.g. Hands-on technical work"><select [(ngModel)]="newPreference.category" name="preferenceCategory"><option value="role">Role</option><option value="work_mode">Work mode</option><option value="industry">Industry</option><option value="culture">Culture</option><option value="company">Company</option></select><select [(ngModel)]="newPreference.importance" name="preferenceImportance"><option value="must">Must have</option><option value="strong">Strong</option><option value="flexible">Flexible</option><option value="avoid">Avoid</option></select><button class="btn-primary" type="button" (click)="addPreference()">Add</button></div>
+        <div class="preference-list"><article *ngFor="let preference of preferences"><span class="preference-level" [class.avoid]="preference.importance === 'avoid'">{{ preference.importance }}</span><div><strong>{{ preference.label }}</strong><small>{{ preference.category }}</small></div><button class="icon-button" type="button" aria-label="Remove preference" (click)="removePreference(preference)">×</button></article></div>
+      </section>
 
       <section class="panel" *ngIf="activeTab === 'facts'">
         <div class="panel-head">
@@ -139,6 +164,8 @@ import { RealtimeService } from '../services/realtime.service';
   `,
 })
 export class ProfileComponent implements OnInit, OnDestroy {
+  profile?: CandidateProfile;
+  preferences: CandidatePreference[] = [];
   documents: ProfileDocument[] = [];
   facts: ProfileFact[] = [];
   factTypes = ['skill', 'achievement', 'role', 'project', 'metric', 'preference', 'constraint', 'education'];
@@ -148,7 +175,12 @@ export class ProfileComponent implements OnInit, OnDestroy {
   rawText = '';
   factSearch = '';
   message = '';
-  activeTab: 'facts' | 'sources' = 'facts';
+  activeTab: 'overview' | 'facts' | 'preferences' | 'sources' = 'overview';
+  targetRolesText = '';
+  targetIndustriesText = '';
+  authorizedCountriesText = '';
+  workModesText = '';
+  newPreference: Partial<CandidatePreference> = { category: 'role', importance: 'strong', label: '', value: {}, verified_by_user: true };
   editingFactId: number | null = null;
   factDraft: Partial<ProfileFact> = {};
   private file?: File;
@@ -170,6 +202,14 @@ export class ProfileComponent implements OnInit, OnDestroy {
   }
 
   load(): void {
+    this.api.candidateProfile().subscribe((profile) => {
+      this.profile = profile;
+      this.targetRolesText = profile.target_roles.join(', ');
+      this.targetIndustriesText = profile.target_industries.join(', ');
+      this.authorizedCountriesText = profile.authorized_countries.join(', ');
+      this.workModesText = profile.work_modes.join(', ');
+    });
+    this.api.preferences().subscribe((page) => this.preferences = page.results);
     this.api.documents().subscribe((page) => this.documents = page.results);
     this.loadFacts();
   }
@@ -181,6 +221,32 @@ export class ProfileComponent implements OnInit, OnDestroy {
 
   verifiedCount(): number {
     return this.facts.filter((fact) => fact.verified_by_user).length;
+  }
+
+  values(text: string): string[] { return text.split(',').map((value) => value.trim()).filter(Boolean); }
+
+  saveProfile(): void {
+    if (!this.profile) return;
+    const payload = {
+      ...this.profile,
+      target_roles: this.values(this.targetRolesText),
+      target_industries: this.values(this.targetIndustriesText),
+      authorized_countries: this.values(this.authorizedCountriesText),
+      work_modes: this.values(this.workModesText).map((value) => value.toLowerCase()),
+    };
+    this.api.updateCandidateProfile(payload).subscribe((profile) => { this.profile = profile; this.message = 'Search brief saved.'; });
+  }
+
+  addPreference(): void {
+    if (!String(this.newPreference.label || '').trim()) return;
+    this.api.createPreference(this.newPreference).subscribe((preference) => {
+      this.preferences.push(preference);
+      this.newPreference = { category: 'role', importance: 'strong', label: '', value: {}, verified_by_user: true };
+    });
+  }
+
+  removePreference(preference: CandidatePreference): void {
+    this.api.deletePreference(preference.id).subscribe(() => this.preferences = this.preferences.filter((item) => item.id !== preference.id));
   }
 
   onFile(event: Event): void {

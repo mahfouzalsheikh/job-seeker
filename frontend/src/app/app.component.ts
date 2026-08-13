@@ -33,14 +33,15 @@ import { RealtimeService, RealtimeStatus } from './services/realtime.service';
         </div>
 
         <nav class="side-nav-main" aria-label="Primary">
-          <span class="nav-section-label">Workspace</span>
-          <a routerLink="/dashboard" [class.active]="active('/dashboard')" [attr.aria-current]="active('/dashboard') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">⌂</span>Dashboard</a>
-          <a routerLink="/profile" [class.active]="active('/profile')" [attr.aria-current]="active('/profile') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">◎</span>Profile</a>
-          <a routerLink="/matches" [class.active]="active('/matches')" [attr.aria-current]="active('/matches') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">◇</span>Matches</a>
-          <a routerLink="/resume-lab" [class.active]="active('/resume-lab')" [attr.aria-current]="active('/resume-lab') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">▤</span>Resume Lab</a>
-          <a routerLink="/pipeline" [class.active]="active('/pipeline')" [attr.aria-current]="active('/pipeline') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">▦</span>Pipeline</a>
+          <span class="nav-section-label">Your search</span>
+          <a routerLink="/dashboard" [class.active]="active('/dashboard')" [attr.aria-current]="active('/dashboard') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">⌂</span>Today</a>
+          <a routerLink="/concierge" [class.active]="active('/concierge')" [attr.aria-current]="active('/concierge') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">✦</span>Concierge</a>
+          <a routerLink="/matches" [class.active]="active('/matches')" [attr.aria-current]="active('/matches') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">◇</span>Opportunities</a>
+          <a routerLink="/pipeline" [class.active]="active('/pipeline')" [attr.aria-current]="active('/pipeline') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">▦</span>Applications</a>
+          <a routerLink="/resume-lab" [class.active]="active('/resume-lab')" [attr.aria-current]="active('/resume-lab') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">▤</span>Document Studio</a>
 
-          <span class="nav-section-label nav-section-spaced">Insights & tools</span>
+          <span class="nav-section-label nav-section-spaced">Knowledge & tools</span>
+          <a routerLink="/profile" [class.active]="active('/profile')" [attr.aria-current]="active('/profile') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">◎</span>Candidate Profile</a>
           <a routerLink="/sources" [class.active]="active('/sources')" [attr.aria-current]="active('/sources') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">⌁</span>Sources</a>
           <a routerLink="/strategy" [class.active]="active('/strategy')" [attr.aria-current]="active('/strategy') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">↗</span>Strategy</a>
           <a routerLink="/artifacts" [class.active]="active('/artifacts')" [attr.aria-current]="active('/artifacts') ? 'page' : null" (click)="closeNav()"><span class="nav-icon">□</span>Artifacts</a>

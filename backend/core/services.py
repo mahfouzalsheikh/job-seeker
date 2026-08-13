@@ -108,6 +108,8 @@ def ingest_profile_document(document: ProfileDocument) -> dict[str, Any]:
             source_chunk=source_chunk,
             embedding=embed_text(f'{title}\n{statement}'),
             metadata={'extractor': extracted.source},
+            lifecycle='proposed',
+            evidence_quote=statement,
         )
         existing_keys.add(key)
         created += 1
@@ -119,6 +121,10 @@ def ingest_profile_document(document: ProfileDocument) -> dict[str, Any]:
 
     if document.kind == 'resume':
         ensure_canonical_resume(document)
+
+    from .domain.profiles import compute_profile_completeness
+
+    compute_profile_completeness(document.owner)
 
     return {'created_facts': created, 'created_chunks': len(chunks)}
 
@@ -166,6 +172,13 @@ def import_job_posting(owner, *, text: str, source_url: str = '', source=None) -
         content_hash=content_hash,
         defaults=defaults,
     )
+    from .domain.sourcing import persist_job_structure
+
+    job.canonical_url = source_url
+    job.last_seen_at = timezone.now()
+    job.freshness_status = 'fresh'
+    job.save(update_fields=['canonical_url', 'last_seen_at', 'freshness_status', 'updated_at'])
+    persist_job_structure(job)
     recompute_match(job)
     return job
 
@@ -182,67 +195,9 @@ def normalize_remote_policy(value: Any) -> str:
 
 
 def recompute_match(job: JobPosting) -> JobMatch:
-    facts = list(ProfileFact.objects.filter(owner=job.owner).order_by('-verified_by_user', 'fact_type', 'title')[:200])
-    fact_text = '\n'.join(f'{fact.title}: {fact.statement}' for fact in facts)
-    fact_embedding = embed_text(fact_text) if fact_text else []
-    job_embedding = job.embedding or embed_text(job.description_text)
-    if not job.embedding:
-        job.embedding = job_embedding
-        job.save(update_fields=['embedding', 'updated_at'])
+    from .domain.matching import recompute_match as recompute_match_v2
 
-    semantic = (cosine_similarity(fact_embedding, job_embedding) + 1) / 2 if fact_text else 0
-    job_skills = detect_skills(job.description_text)
-    profile_text = fact_text.lower()
-    covered = [skill for skill in job_skills if skill.lower() in profile_text]
-    missing = [skill for skill in job_skills if skill not in covered]
-    skill_score = len(covered) / max(1, len(job_skills))
-
-    job_terms = set(keywords(job.description_text, limit=120))
-    profile_terms = set(keywords(fact_text, limit=500))
-    lexical = len(job_terms & profile_terms) / max(1, len(job_terms))
-
-    score = round((semantic * 35) + (skill_score * 45) + (lexical * 20))
-    if job.remote_policy == 'remote':
-        score = min(100, score + 3)
-    score = max(0, min(100, score))
-
-    supporting = []
-    for fact in facts:
-        fact_blob = f'{fact.title} {fact.statement}'.lower()
-        overlap = [skill for skill in covered if skill.lower() in fact_blob]
-        if not overlap:
-            continue
-        supporting.append({
-            'fact_id': fact.id,
-            'title': fact.title,
-            'statement': fact.statement,
-            'skills': overlap,
-        })
-        if len(supporting) >= 8:
-            break
-
-    confidence = 'high' if score >= 80 else 'medium' if score >= 55 else 'low'
-    explanation = {
-        'semantic_score': round(semantic, 3),
-        'skill_score': round(skill_score, 3),
-        'lexical_score': round(lexical, 3),
-        'covered_skills': covered,
-        'job_skills': job_skills,
-        'summary': build_match_summary(score, covered, missing),
-    }
-    match, _ = JobMatch.objects.update_or_create(
-        owner=job.owner,
-        job=job,
-        defaults={
-            'score': score,
-            'hard_filter_status': 'pass',
-            'explanation_json': explanation,
-            'missing_requirements': missing,
-            'supporting_facts': supporting,
-            'confidence': confidence,
-        },
-    )
-    return match
+    return recompute_match_v2(job)
 
 
 def build_match_summary(score: int, covered: list[str], missing: list[str]) -> str:
@@ -365,4 +320,3 @@ def dashboard(owner) -> dict[str, Any]:
         'resumes': Resume.objects.filter(owner=owner).count(),
         'strategy': strategy,
     }
-

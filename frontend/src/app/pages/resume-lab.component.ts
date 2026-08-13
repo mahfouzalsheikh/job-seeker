@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ApiService, JobPosting, Resume } from '../services/api.service';
+import { ApiService, CoverLetter, JobPosting, Resume } from '../services/api.service';
 
 @Component({
   standalone: true,
@@ -39,13 +39,13 @@ import { ApiService, JobPosting, Resume } from '../services/api.service';
 
       <div class="workspace-grid" *ngIf="activeTab === 'library'">
         <section class="panel">
-          <div class="panel-head"><div><h2>Saved resumes</h2><p>{{ resumes.length }} versions</p></div><button class="icon-button" type="button" (click)="load()" aria-label="Refresh resumes">↻</button></div>
+          <div class="panel-head"><div><h2>Saved materials</h2><p>{{ resumes.length }} resumes · {{ coverLetters.length }} cover letters</p></div><button class="icon-button" type="button" (click)="load()" aria-label="Refresh materials">↻</button></div>
           <button
             class="job-row"
             type="button"
             *ngFor="let resume of resumes"
             [class.selected]="selected?.id === resume.id"
-            (click)="selected = resume">
+            (click)="selected = resume; selectedLetter = undefined">
             <span>
               <strong>{{ resume.title }}</strong>
               <small>{{ resume.kind }} · {{ resume.target_job_title || 'Master version' }}</small>
@@ -53,6 +53,8 @@ import { ApiService, JobPosting, Resume } from '../services/api.service';
             <span class="status-chip" [class.good]="resume.approved">{{ resume.approved ? 'approved' : 'draft' }}</span>
           </button>
           <div class="empty-state small" *ngIf="!resumes.length"><span class="empty-icon">▤</span><h3>No resumes yet</h3><p>Create a canonical resume to get started.</p><button class="btn-primary" type="button" (click)="activeTab = 'create'">Create resume</button></div>
+          <div class="section-divider" *ngIf="coverLetters.length"><span>Cover letters</span></div>
+          <button class="job-row" type="button" *ngFor="let letter of coverLetters" [class.selected]="selectedLetter?.id === letter.id" (click)="selectedLetter = letter; selected = undefined"><span><strong>{{ letter.title }}</strong><small>Version {{ letter.version }} · {{ letter.target_job_title }}</small></span><span class="status-chip" [class.good]="letter.approved">{{ letter.approved ? 'approved' : 'draft' }}</span></button>
         </section>
 
         <section class="panel detail-panel" *ngIf="selected">
@@ -93,14 +95,24 @@ import { ApiService, JobPosting, Resume } from '../services/api.service';
             <button class="btn-secondary" type="button" (click)="download(selected)">↓ Export markdown</button>
           </div>
         </section>
+
+        <section class="panel detail-panel" *ngIf="selectedLetter">
+          <div class="panel-head"><div><h2>{{ selectedLetter.title }}</h2><p>Cover letter · version {{ selectedLetter.version }}</p></div><span class="status-chip" [class.good]="selectedLetter.approved">{{ selectedLetter.approved ? 'Approved' : 'Draft' }}</span></div>
+          <div class="validation-grid"><div><span>Evidence facts</span><strong>{{ (selectedLetter.content_json?.evidence_fact_ids || []).length }}</strong></div><div><span>Unsupported claims</span><strong>{{ (selectedLetter.validation?.unsupported_claims || []).length }}</strong></div><div><span>Risk notes</span><strong>{{ (selectedLetter.validation?.risk_notes || []).length }}</strong></div></div>
+          <h3>Review notes</h3><div class="chip-row"><span class="status-chip warn" *ngFor="let note of selectedLetter.validation?.risk_notes || []">{{ note }}</span><span class="muted" *ngIf="!(selectedLetter.validation?.risk_notes || []).length">No risk notes detected.</span></div>
+          <h3>Cover letter</h3><pre class="resume-preview">{{ selectedLetter.content_markdown }}</pre>
+          <div class="action-row"><button class="btn-primary" type="button" (click)="approveLetter(selectedLetter)" *ngIf="!selectedLetter.approved">✓ Approve cover letter</button></div>
+        </section>
       </div>
     </section>
   `,
 })
 export class ResumeLabComponent implements OnInit {
   resumes: Resume[] = [];
+  coverLetters: CoverLetter[] = [];
   jobs: JobPosting[] = [];
   selected?: Resume;
+  selectedLetter?: CoverLetter;
   targetJobId: number | null = null;
   newTitle = 'Canonical Resume';
   newMarkdown = '';
@@ -122,6 +134,7 @@ export class ResumeLabComponent implements OnInit {
       }
     });
     this.api.jobs().subscribe((page) => this.jobs = page.results);
+    this.api.coverLetters().subscribe((page) => this.coverLetters = page.results);
   }
 
   createCanonical(): void {
@@ -162,6 +175,10 @@ export class ResumeLabComponent implements OnInit {
       this.selected = updated;
       this.load();
     });
+  }
+
+  approveLetter(letter: CoverLetter): void {
+    this.api.approveCoverLetter(letter.id).subscribe((updated) => { this.selectedLetter = updated; this.load(); });
   }
 
   download(resume: Resume): void {

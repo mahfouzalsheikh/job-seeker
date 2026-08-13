@@ -111,6 +111,12 @@ CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_TASK_TIME_LIMIT = int(os.environ.get('CELERY_TASK_TIME_LIMIT_SECONDS', '900'))
 CELERY_TASK_SOFT_TIME_LIMIT = int(os.environ.get('CELERY_TASK_SOFT_TIME_LIMIT_SECONDS', '840'))
+CELERY_BEAT_SCHEDULE = {
+    'refresh-enabled-job-sources': {
+        'task': 'core.tasks.refresh_enabled_sources_task',
+        'schedule': float(os.environ.get('SOURCE_REFRESH_INTERVAL_SECONDS', '21600')),
+    },
+}
 
 CHANNEL_LAYERS = {
     'default': {
@@ -133,3 +139,6 @@ OPENAI_TEXT_MODEL = os.environ.get('OPENAI_TEXT_MODEL', 'gpt-4.1-mini')
 OPENAI_EMBEDDING_MODEL = os.environ.get('OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small')
 OPENAI_TIMEOUT_SECONDS = float(os.environ.get('OPENAI_TIMEOUT_SECONDS', '45'))
 OPENAI_MAX_RETRIES = int(os.environ.get('OPENAI_MAX_RETRIES', '0'))
+SOURCE_HTTP_TIMEOUT_SECONDS = int(os.environ.get('SOURCE_HTTP_TIMEOUT_SECONDS', '20'))
+GOTENBERG_URL = os.environ.get('GOTENBERG_URL', 'http://gotenberg:3000')
+GOTENBERG_TIMEOUT_SECONDS = int(os.environ.get('GOTENBERG_TIMEOUT_SECONDS', '45'))
