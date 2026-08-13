@@ -483,7 +483,10 @@ class ConversationThreadViewSet(OwnedViewSet):
         content = str(request.data.get('content', '')).strip()
         if not content:
             return Response({'content': ['This field is required.']}, status=status.HTTP_400_BAD_REQUEST)
-        run = create_concierge_run(request.user, message=content, thread=thread)
+        context = request.data.get('context')
+        if not isinstance(context, dict):
+            context = {}
+        run = create_concierge_run(request.user, message=content, thread=thread, context=context)
         publish_user_event(request.user.id, 'agent_run_queued', {'run_id': run.id, 'agent': run.agent})
         try:
             task = execute_agent_run_task.delay(run.id)

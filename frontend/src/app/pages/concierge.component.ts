@@ -1,13 +1,14 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Subscription, timer } from 'rxjs';
+import { RouterLink } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { ApiService, ApprovalRequest, ConversationThread } from '../services/api.service';
 import { RealtimeService } from '../services/realtime.service';
 
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <section class="page concierge-page">
       <div class="page-head concierge-head">
@@ -21,26 +22,40 @@ import { RealtimeService } from '../services/realtime.service';
 
       <div class="concierge-layout">
         <section class="conversation-panel">
-          <div class="conversation-stream" #stream>
+          <div class="conversation-toolbar">
+            <div><strong>Search Concierge</strong><small>Answers use your profile, matches, and pipeline</small></div>
+            <button type="button" class="new-chat" (click)="newConversation()" [disabled]="sending || startingConversation">{{ startingConversation ? 'Starting…' : '+ New conversation' }}</button>
+          </div>
+          <div class="conversation-stream" #stream aria-live="polite">
             <div class="concierge-welcome" *ngIf="!thread?.messages?.length">
               <span class="concierge-orb">JS</span>
               <h2>What would move your search forward today?</h2>
               <p>I can review your profile, refresh sources, explain matches, prepare materials, or surface the next pipeline action.</p>
               <div class="prompt-grid">
-                <button type="button" *ngFor="let prompt of prompts" (click)="send(prompt)">{{ prompt }} <span>↗</span></button>
+                <button type="button" *ngFor="let prompt of prompts" (click)="send(prompt)" [disabled]="sending">{{ prompt }} <span>↗</span></button>
               </div>
             </div>
 
             <article class="chat-message" *ngFor="let message of thread?.messages" [class.user-message]="message.role === 'user'">
               <span class="chat-avatar">{{ message.role === 'user' ? 'You' : 'JS' }}</span>
-              <div><small>{{ message.role === 'user' ? 'You' : agentName(message.metadata?.agent) }}</small><p>{{ message.content }}</p></div>
+              <div class="message-bubble">
+                <small>{{ message.role === 'user' ? 'You' : agentName(message.metadata?.agent) }} <span>· {{ message.created_at | date:'shortTime' }}</span></small>
+                <p class="message-copy">{{ message.content }}</p>
+                <div class="message-actions" *ngIf="message.role === 'assistant' && message.metadata?.actions?.length">
+                  <ng-container *ngFor="let action of message.metadata.actions">
+                    <a *ngIf="action.kind === 'link'" [routerLink]="action.route">{{ action.label }} <span>→</span></a>
+                    <button *ngIf="action.kind === 'prompt'" type="button" (click)="send(action.prompt, action.job_id)" [disabled]="sending">{{ action.label }} <span>→</span></button>
+                  </ng-container>
+                </div>
+              </div>
             </article>
-            <article class="chat-message thinking" *ngIf="sending"><span class="chat-avatar">JS</span><div><small>Specialist working</small><p><i></i><i></i><i></i></p></div></article>
+            <article class="chat-message thinking" *ngIf="sending" role="status"><span class="chat-avatar">JS</span><div class="message-bubble"><small>{{ workingAgent }} is working</small><p><i></i><i></i><i></i><span>Reviewing your workspace…</span></p></div></article>
           </div>
 
           <form class="composer" (ngSubmit)="send(draft)">
-            <textarea [(ngModel)]="draft" name="draft" rows="2" placeholder="Ask about your profile, opportunities, applications, or materials…" (keydown.control.enter)="send(draft)"></textarea>
-            <div><span>Ctrl + Enter to send</span><button class="btn-primary" type="submit" [disabled]="!draft.trim() || sending">{{ sending ? 'Working…' : 'Send →' }}</button></div>
+            <div class="composer-error" *ngIf="chatError" role="alert">{{ chatError }}</div>
+            <textarea [(ngModel)]="draft" name="draft" rows="2" aria-label="Message Search Concierge" placeholder="Ask about your profile, opportunities, applications, or materials…" [disabled]="startingConversation" (keydown.control.enter)="$event.preventDefault(); send(draft)"></textarea>
+            <div><span>Ctrl + Enter to send</span><button class="btn-primary" type="submit" [disabled]="!draft.trim() || sending || startingConversation">{{ sending ? 'Working…' : 'Send →' }}</button></div>
           </form>
         </section>
 
@@ -64,12 +79,18 @@ import { RealtimeService } from '../services/realtime.service';
   `,
 })
 export class ConciergeComponent implements OnInit, OnDestroy {
+  @ViewChild('stream') private stream?: ElementRef<HTMLElement>;
   thread?: ConversationThread;
   approvals: ApprovalRequest[] = [];
   draft = '';
   sending = false;
+  startingConversation = false;
+  workingAgent = 'Search Concierge';
+  chatError = '';
   decidingApprovalId: number | null = null;
   private eventSub?: Subscription;
+  private pollTimer?: ReturnType<typeof setTimeout>;
+  private pendingRunId?: number;
   prompts = [
     'What should I focus on today?',
     'Find and rank new roles',
@@ -90,38 +111,111 @@ export class ConciergeComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.load();
     this.eventSub = this.realtime.events$.subscribe((event) => {
-      if (String(event.type || '').startsWith('agent_') || String(event.type || '').startsWith('approval_')) this.refreshSoon();
+      const type = String(event.type || '');
+      if (type.startsWith('agent_') && this.pendingRunId) this.pollForResponse(this.pendingRunId, 0);
+      if (type.startsWith('approval_')) this.loadApprovals();
     });
   }
 
-  ngOnDestroy(): void { this.eventSub?.unsubscribe(); }
+  ngOnDestroy(): void {
+    this.eventSub?.unsubscribe();
+    if (this.pollTimer) clearTimeout(this.pollTimer);
+  }
 
   load(): void {
     this.api.conversations().subscribe((page) => {
       if (page.results.length) {
         this.thread = page.results[0];
+        this.scrollToLatest();
       } else {
-        this.api.createConversation().subscribe((thread) => this.thread = thread);
+        this.api.createConversation().subscribe((thread) => { this.thread = thread; this.scrollToLatest(); });
       }
     });
+    this.loadApprovals();
+  }
+
+  send(content: string, jobId?: number): void {
+    const value = content.trim();
+    if (!value || !this.thread || this.sending || this.startingConversation) return;
+    this.sending = true;
+    this.chatError = '';
+    this.workingAgent = 'Search Concierge';
+    this.draft = '';
+    this.scrollToLatest();
+    this.api.sendMessage(this.thread.id, value, jobId ? { job_id: jobId } : {}).subscribe({
+      next: (run) => {
+        this.pendingRunId = run.id;
+        this.workingAgent = this.agentName(run.agent);
+        this.pollForResponse(run.id, 0);
+      },
+      error: () => {
+        this.sending = false;
+        this.chatError = 'That message could not be sent. Your draft is safe to try again.';
+        this.draft = value;
+      },
+    });
+  }
+
+  newConversation(): void {
+    if (this.sending || this.startingConversation) return;
+    this.startingConversation = true;
+    this.chatError = '';
+    this.api.createConversation().subscribe({
+      next: (thread) => {
+        this.thread = thread;
+        this.startingConversation = false;
+        this.scrollToLatest();
+      },
+      error: () => {
+        this.startingConversation = false;
+        this.chatError = 'A new conversation could not be started. Please try again.';
+      },
+    });
+  }
+
+  private pollForResponse(runId: number, attempt: number): void {
+    if (!this.thread || this.pendingRunId !== runId) return;
+    if (this.pollTimer) clearTimeout(this.pollTimer);
+    this.api.conversation(this.thread.id).subscribe({
+      next: (thread) => {
+        if (this.pendingRunId !== runId) return;
+        this.thread = thread;
+        this.scrollToLatest();
+        const completed = thread.messages.some((message) => message.role === 'assistant' && message.metadata?.run_id === runId);
+        if (completed) {
+          this.pendingRunId = undefined;
+          this.sending = false;
+          this.loadApprovals();
+          return;
+        }
+        if (attempt >= 80) {
+          this.pendingRunId = undefined;
+          this.sending = false;
+          this.chatError = 'This is taking longer than expected. You can keep this page open or try again.';
+          return;
+        }
+        this.pollTimer = setTimeout(() => this.pollForResponse(runId, attempt + 1), attempt < 5 ? 600 : 1200);
+      },
+      error: () => {
+        if (attempt >= 80) {
+          this.pendingRunId = undefined;
+          this.sending = false;
+          this.chatError = 'I lost the connection while waiting for the response. Please try again.';
+          return;
+        }
+        this.pollTimer = setTimeout(() => this.pollForResponse(runId, attempt + 1), 1200);
+      },
+    });
+  }
+
+  private loadApprovals(): void {
     this.api.approvals('pending').subscribe((page) => this.approvals = page.results);
   }
 
-  send(content: string): void {
-    const value = content.trim();
-    if (!value || !this.thread || this.sending) return;
-    this.sending = true;
-    this.draft = '';
-    this.api.sendMessage(this.thread.id, value).subscribe({
-      next: () => this.refreshSoon(),
-      error: () => this.sending = false,
-    });
-  }
-
-  refreshSoon(): void {
-    timer(900).subscribe(() => {
-      if (this.thread) this.api.conversation(this.thread.id).subscribe((thread) => { this.thread = thread; this.sending = false; });
-      this.api.approvals('pending').subscribe((page) => this.approvals = page.results);
+  private scrollToLatest(): void {
+    setTimeout(() => {
+      const element = this.stream?.nativeElement;
+      if (element) element.scrollTop = element.scrollHeight;
     });
   }
 
@@ -129,7 +223,7 @@ export class ConciergeComponent implements OnInit, OnDestroy {
     if (this.decidingApprovalId) return;
     this.decidingApprovalId = approval.id;
     this.api.decideApproval(approval.id, approved).subscribe({
-      next: () => { this.decidingApprovalId = null; this.load(); },
+      next: () => { this.decidingApprovalId = null; this.loadApprovals(); },
       error: () => { this.decidingApprovalId = null; },
     });
   }
@@ -140,8 +234,8 @@ export class ConciergeComponent implements OnInit, OnDestroy {
     return 'Saving decision…';
   }
 
-  agentName(agent: string): string {
+  agentName(agent?: string): string {
     const names: Record<string, string> = { profile: 'Profile Steward', sourcing: 'Sourcing Scout', matching: 'Match Analyst', application: 'Application Coach', documents: 'Document Tailor', concierge: 'Search Concierge' };
-    return names[agent] || 'Search Concierge';
+    return names[agent || ''] || 'Search Concierge';
   }
 }

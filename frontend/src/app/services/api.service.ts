@@ -376,7 +376,7 @@ export class ApiService {
     return this.http.get<ConversationThread>(`${environment.apiBaseUrl}/conversations/${id}/`);
   }
 
-  sendMessage(threadId: number, content: string): Observable<AgentRun> {
-    return this.http.post<AgentRun>(`${environment.apiBaseUrl}/conversations/${threadId}/send/`, { content });
+  sendMessage(threadId: number, content: string, context: { job_id?: number } = {}): Observable<AgentRun> {
+    return this.http.post<AgentRun>(`${environment.apiBaseUrl}/conversations/${threadId}/send/`, { content, context });
   }
 }

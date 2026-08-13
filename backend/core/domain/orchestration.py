@@ -8,7 +8,6 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.utils import timezone
 
-from core.ai import clean_text, generate_json
 from core.domain.briefing import today_briefing
 from core.domain.documents import prepare_application_materials, render_application_bundle
 from core.domain.profiles import profile_health
@@ -36,26 +35,8 @@ def default_thread(owner) -> ConversationThread:
     return ConversationThread.objects.create(owner=owner, title='Job search concierge')
 
 
-def _classify(message: str) -> dict[str, str]:
-    schema = {
-        'name': 'concierge_route',
-        'schema': {
-            'type': 'object',
-            'additionalProperties': False,
-            'properties': {
-                'agent': {'type': 'string', 'enum': ['profile', 'sourcing', 'matching', 'application', 'documents', 'concierge']},
-                'intent': {'type': 'string'},
-            },
-            'required': ['agent', 'intent'],
-        },
-    }
-    generated = generate_json(
-        'Route this job-search request to one specialist. Do not answer the request.',
-        message[:4000],
-        schema,
-    )
-    if generated:
-        return generated.data
+def _classify(message: str, *, previous_agent: str = '') -> dict[str, str]:
+    """Route common chat intents immediately and keep short follow-ups in context."""
     lowered = message.lower()
     if any(term in lowered for term in ['resume', 'cover letter', 'materials', 'pdf', 'tailor', 'prepare']):
         return {'agent': 'documents', 'intent': 'prepare_materials'}
@@ -63,23 +44,55 @@ def _classify(message: str) -> dict[str, str]:
         return {'agent': 'sourcing', 'intent': 'run_sources'}
     if any(term in lowered for term in ['profile', 'skill', 'experience', 'fact', 'know about me']):
         return {'agent': 'profile', 'intent': 'profile_review'}
-    if any(term in lowered for term in ['score', 'match', 'fit', 'why this job']):
+    if any(term in lowered for term in [
+        'score', 'match', 'fit', 'why this job', 'top one', 'best one', 'top job',
+        'best job', 'strongest role', 'strongest opportunity', 'recommendation',
+    ]):
         return {'agent': 'matching', 'intent': 'explain_matches'}
     if any(term in lowered for term in ['apply', 'follow up', 'pipeline', 'interview']):
         return {'agent': 'application', 'intent': 'application_next_action'}
+    if any(term in lowered for term in ['focus on today', 'what should i do', 'status', 'overview', 'briefing', 'priorities']):
+        return {'agent': 'concierge', 'intent': 'daily_briefing'}
+    follow_up_terms = ['it', 'that', 'this', 'one', 'more', 'why', 'how', 'there']
+    words = {word.strip('.,!?;:') for word in lowered.split()}
+    if previous_agent and (len(words) <= 8 or words.intersection(follow_up_terms)):
+        return {'agent': previous_agent, 'intent': 'continue_conversation'}
     return {'agent': 'concierge', 'intent': 'daily_briefing'}
 
 
-def create_concierge_run(owner, *, message: str, thread: ConversationThread | None = None) -> AgentRun:
+def create_concierge_run(
+    owner,
+    *,
+    message: str,
+    thread: ConversationThread | None = None,
+    context: dict[str, Any] | None = None,
+) -> AgentRun:
     thread = thread or default_thread(owner)
     ConversationMessage.objects.create(owner=owner, thread=thread, role='user', content=message)
-    route = _classify(message)
+    previous = thread.messages.filter(role='assistant').order_by('-created_at', '-id').first()
+    previous_agent = str((previous.metadata or {}).get('agent', '')) if previous else ''
+    route = _classify(message, previous_agent=previous_agent)
+    run_input: dict[str, Any] = {'message': message, 'intent': route['intent']}
+
+    requested_job_id = (context or {}).get('job_id')
+    previous_job_id = (previous.metadata or {}).get('job_id') if previous else None
+    lowered = message.lower()
+    message_words = {word.strip('.,!?;:') for word in lowered.split()}
+    refers_to_previous = bool(message_words.intersection({'it', 'this', 'that', 'why', 'more'}))
+    asks_for_ranking = any(term in lowered for term in ['top', 'best', 'strongest'])
+    candidate_job_id = requested_job_id or (previous_job_id if refers_to_previous and not asks_for_ranking else None)
+    if candidate_job_id and route['agent'] in {'matching', 'documents', 'application'}:
+        job = JobPosting.objects.filter(owner=owner, pk=candidate_job_id).only('id').first()
+        if job:
+            run_input['job_id'] = job.id
+
+    thread.save(update_fields=['updated_at'])
     return AgentRun.objects.create(
         owner=owner,
         thread=thread,
         agent=route['agent'],
         objective=message,
-        input={'message': message, 'intent': route['intent']},
+        input=run_input,
         model=getattr(settings, 'OPENAI_TEXT_MODEL', ''),
     )
 
@@ -126,7 +139,11 @@ def _handle_profile(run: AgentRun) -> dict[str, Any]:
         reply = f"Your profile is {health['completeness']}% complete. The highest-value question is: {health['questions'][0]}"
     else:
         reply = f"Your profile is {health['completeness']}% complete with {health['unverified_count']} facts still awaiting review."
-    return {'reply': reply, 'profile_health': health}
+    return {
+        'reply': reply,
+        'profile_health': health,
+        'actions': [{'kind': 'link', 'label': 'Review candidate profile', 'route': '/profile'}],
+    }
 
 
 def _handle_sourcing(run: AgentRun) -> dict[str, Any]:
@@ -143,18 +160,55 @@ def _handle_sourcing(run: AgentRun) -> dict[str, Any]:
             'errors': source_run.error_count,
         })
     imported = sum(item['imported'] for item in summaries)
-    return {'reply': f'I refreshed {len(sources)} sources and found {imported} new roles.', 'source_runs': summaries}
+    action = (
+        {'kind': 'link', 'label': 'Review ranked opportunities', 'route': '/matches'}
+        if sources else {'kind': 'link', 'label': 'Set up job sources', 'route': '/sources'}
+    )
+    return {
+        'reply': f'I refreshed {len(sources)} sources and found {imported} new roles.',
+        'source_runs': summaries,
+        'actions': [action],
+    }
 
 
 def _handle_matching(run: AgentRun) -> dict[str, Any]:
     briefing = today_briefing(run.owner)
     queue = briefing['review_queue']
     if not queue:
-        reply = 'There are no fresh scored opportunities yet. Add or run a source to build the review queue.'
-    else:
-        best = queue[0]
-        reply = f"{best['title']} at {best['company'] or 'the company'} leads the queue at {best['score']} fit. {best['summary']}"
-    return {'reply': reply, 'review_queue': queue[:5]}
+        return {
+            'reply': 'There are no fresh scored opportunities yet. Run your sources or import a job, then I can rank the results.',
+            'review_queue': [],
+            'actions': [{'kind': 'link', 'label': 'Open job sources', 'route': '/sources'}],
+        }
+
+    requested_job_id = run.input.get('job_id')
+    best = next((item for item in queue if item['id'] == requested_job_id), queue[0])
+    job = JobPosting.objects.filter(owner=run.owner, pk=best['id']).select_related('match').first()
+    match = getattr(job, 'match', None) if job else None
+    explanation = (match.explanation_json or {}) if match else {}
+    covered = explanation.get('covered_skills', [])[:4]
+    gaps = (match.missing_requirements or [])[:3] if match else []
+    location = best['location'] or best['remote_policy'].title() or 'Location not specified'
+    evidence = ', '.join(covered) if covered else 'your verified profile evidence'
+    risk = ', '.join(gaps) if gaps else 'no material skill gaps identified'
+    reply = (
+        f"Top recommendation\n{best['title']} at {best['company'] or 'Company not listed'}\n"
+        f"{best['score']}% match · {best['eligibility'].title()} eligibility · {best['confidence'].title()} confidence\n\n"
+        f"Why it ranks first: {best['summary'] or 'It has the strongest overall alignment in your current review queue.'}\n"
+        f"Strongest evidence: {evidence}.\n"
+        f"Watch-outs: {risk}.\n"
+        f"Location: {location}."
+    )
+    actions = [
+        {'kind': 'link', 'label': 'Review full match', 'route': '/matches', 'job_id': best['id']},
+        {
+            'kind': 'prompt',
+            'label': 'Prepare application materials',
+            'prompt': f"Prepare application materials for {best['title']} at {best['company'] or 'this company'}",
+            'job_id': best['id'],
+        },
+    ]
+    return {'reply': reply, 'job_id': best['id'], 'review_queue': queue[:5], 'actions': actions}
 
 
 def _handle_documents(run: AgentRun) -> dict[str, Any]:
@@ -168,13 +222,21 @@ def _handle_documents(run: AgentRun) -> dict[str, Any]:
         prompt=f'Create an evidence-backed resume and cover letter for {job.title} at {job.company or "this company"}?',
         payload={'job_id': job.id},
     )
-    return {'reply': 'I have the role and evidence ready. Your approval is required before I draft the application materials.', 'approval_id': approval.id}
+    return {
+        'reply': f'I have {job.title} at {job.company or "the company"} and your verified evidence ready. Approve the request on the right before I draft anything.',
+        'approval_id': approval.id,
+        'job_id': job.id,
+    }
 
 
 def _handle_application(run: AgentRun) -> dict[str, Any]:
     due = today_briefing(run.owner)['due_actions']
     if due:
-        return {'reply': f"You have {len(due)} follow-up action{'s' if len(due) != 1 else ''} due. Start with {due[0]['title']}.", 'due_actions': due}
+        return {
+            'reply': f"You have {len(due)} follow-up action{'s' if len(due) != 1 else ''} due. Start with {due[0]['title']}.",
+            'due_actions': due,
+            'actions': [{'kind': 'link', 'label': 'Open application pipeline', 'route': '/pipeline'}],
+        }
     job = _job_from_run(run)
     if job:
         approval = _approval(
@@ -184,14 +246,45 @@ def _handle_application(run: AgentRun) -> dict[str, Any]:
             prompt='Approve this opportunity and prepare its application materials?',
             payload={'job_id': job.id},
         )
-        return {'reply': 'There are no overdue follow-ups. I can move your strongest opportunity forward.', 'approval_id': approval.id}
-    return {'reply': 'Your pipeline is clear. Import or discover jobs to create the next action.'}
+        return {
+            'reply': 'There are no overdue follow-ups. I can move your strongest opportunity forward.',
+            'approval_id': approval.id,
+            'job_id': job.id,
+        }
+    return {
+        'reply': 'Your pipeline is clear. Import or discover jobs to create the next action.',
+        'actions': [{'kind': 'link', 'label': 'Find opportunities', 'route': '/sources'}],
+    }
 
 
 def _handle_concierge(run: AgentRun) -> dict[str, Any]:
     briefing = today_briefing(run.owner)
-    reply = f"You have {briefing['review_count']} roles to review, {briefing['pending_approvals']} approvals waiting, and {briefing['followups_due']} follow-ups due."
-    return {'reply': reply, 'briefing': briefing}
+    queue = briefing['review_queue']
+    health = briefing['profile_health']
+    summary = (
+        f"Current search status\n{briefing['review_count']} roles to review · "
+        f"{briefing['pending_approvals']} approvals waiting · {briefing['followups_due']} follow-ups due"
+    )
+    actions: list[dict[str, Any]] = []
+    if briefing['pending_approvals']:
+        priority = 'Your first priority is the approval waiting on this page so the paused workflow can continue.'
+    elif briefing['followups_due']:
+        priority = f"Start with {briefing['due_actions'][0]['title']}; it is already due."
+        actions.append({'kind': 'link', 'label': 'Open application pipeline', 'route': '/pipeline'})
+    elif queue:
+        best = queue[0]
+        priority = f"Start by reviewing {best['title']} at {best['company'] or 'the company'}, currently your strongest match at {best['score']}%."
+        actions.extend([
+            {'kind': 'prompt', 'label': 'Explain the top match', 'prompt': 'Give me the top one please', 'job_id': best['id']},
+            {'kind': 'link', 'label': 'Review opportunities', 'route': '/matches'},
+        ])
+    elif health['questions']:
+        priority = f"Improve sourcing quality by answering this profile question: {health['questions'][0]}"
+        actions.append({'kind': 'link', 'label': 'Complete candidate profile', 'route': '/profile'})
+    else:
+        priority = 'Your profile is ready. Refresh your sources to create a ranked review queue.'
+        actions.append({'kind': 'link', 'label': 'Open job sources', 'route': '/sources'})
+    return {'reply': f'{summary}\n\nRecommended next move: {priority}', 'briefing': briefing, 'actions': actions}
 
 
 HANDLERS = {
@@ -218,9 +311,14 @@ def execute_agent_run(run: AgentRun) -> AgentRun:
             run.status = 'succeeded'
             run.completed_at = timezone.now()
         if run.thread and output.get('reply'):
+            metadata = {'run_id': run.id, 'agent': run.agent}
+            for key in ('job_id', 'actions', 'approval_id'):
+                if output.get(key) is not None:
+                    metadata[key] = output[key]
             ConversationMessage.objects.create(
-                owner=run.owner, thread=run.thread, role='assistant', content=output['reply'], metadata={'run_id': run.id, 'agent': run.agent},
+                owner=run.owner, thread=run.thread, role='assistant', content=output['reply'], metadata=metadata,
             )
+            run.thread.save(update_fields=['updated_at'])
     except Exception as exc:
         run.status = 'failed'
         run.error = str(exc)[:4000]

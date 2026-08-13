@@ -92,6 +92,29 @@ class AgenticWorkflowTests(TestCase):
         run.refresh_from_db()
         self.assertEqual(run.status, 'succeeded')
 
+    def test_chat_understands_top_role_follow_up_and_keeps_job_context(self):
+        recompute_match(self.job)
+        thread = None
+
+        recommendation = create_concierge_run(self.user, message='Give me the top one please')
+        thread = recommendation.thread
+        self.assertEqual(recommendation.agent, 'matching')
+        execute_agent_run(recommendation)
+
+        answer = ConversationMessage.objects.filter(thread=thread, role='assistant').latest('created_at')
+        self.assertIn('Top recommendation', answer.content)
+        self.assertIn(self.job.title, answer.content)
+        self.assertEqual(answer.metadata['job_id'], self.job.id)
+        self.assertEqual(len(answer.metadata['actions']), 2)
+
+        preparation = create_concierge_run(self.user, message='Prepare it', thread=thread)
+        self.assertEqual(preparation.agent, 'documents')
+        self.assertEqual(preparation.input['job_id'], self.job.id)
+        execute_agent_run(preparation)
+
+        approval = ApprovalRequest.objects.get(run=preparation)
+        self.assertEqual(approval.payload['job_id'], self.job.id)
+
     @override_settings(GOTENBERG_URL='', MEDIA_ROOT='/tmp/job-seeker-test-media')
     def test_rendering_has_recoverable_html_fallback(self):
         application = Application.objects.create(owner=self.user, job=self.job, status='preparing')

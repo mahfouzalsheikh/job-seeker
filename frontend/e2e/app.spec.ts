@@ -99,15 +99,28 @@ test('profile, source, and pipeline controls provide in-flight feedback', async 
 });
 
 test('concierge chat routes a request and returns a specialist response', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop', 'The agent flow runs once; responsive coverage is separate.');
   await page.goto('/concierge');
+  const created = page.waitForResponse((response) => response.request().method() === 'POST' && /\/api\/conversations\/$/.test(response.url()));
+  await page.getByRole('button', { name: /New conversation/ }).click();
+  expect((await created).ok()).toBeTruthy();
   const messages = page.locator('.chat-message:not(.thinking)');
-  const before = await messages.count();
-  await page.getByPlaceholder(/Ask about your profile/).fill('What should I focus on today?');
+  await expect(messages).toHaveCount(0);
+  const prompt = 'Give me the top one please';
+  await page.getByPlaceholder(/Ask about your profile/).fill(prompt);
   await page.getByRole('button', { name: 'Send →' }).click();
-  await expect(page.getByText('Specialist working')).toBeVisible();
-  await expect(messages).toHaveCount(before + 2, { timeout: 60_000 });
-  await expect(page.getByText('Specialist working')).toBeHidden();
+  await expect(page.getByRole('status')).toContainText(/is working/);
+  await expect(messages).toHaveCount(2, { timeout: 60_000 });
+  await expect(page.getByRole('status')).toBeHidden();
+  await expect(page.locator('.chat-message:not(.user-message) .message-copy').last()).toContainText('Top recommendation');
+  await expect(page.getByRole('link', { name: /Review full match/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Prepare application materials/ })).toBeVisible();
+
+  const userMessage = page.locator('.chat-message.user-message').filter({ hasText: prompt }).last();
+  const bounds = await userMessage.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.width).toBeGreaterThan(testInfo.project.name === 'mobile' ? 180 : 240);
+  if (testInfo.project.name === 'desktop') expect(bounds!.x).toBeGreaterThan(400);
+  await assertHealthyLayout(page);
 });
 
 test('job import, scoring, approval, tailoring, and final PDF flow works', async ({ page }, testInfo) => {
