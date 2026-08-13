@@ -50,7 +50,7 @@ import { RealtimeService } from '../services/realtime.service';
             <span class="status-chip warn">Approval required</span>
             <h3>{{ approval.title }}</h3>
             <p>{{ approval.prompt }}</p>
-            <div class="approval-actions"><button class="btn-primary" type="button" (click)="decide(approval, true)">Approve</button><button class="btn-secondary" type="button" (click)="decide(approval, false)">Not now</button></div>
+            <div class="approval-actions"><button class="btn-primary" type="button" (click)="decide(approval, true)" [disabled]="decidingApprovalId === approval.id"><span class="spinner" *ngIf="decidingApprovalId === approval.id" aria-hidden="true"></span>{{ decidingApprovalId === approval.id ? approvalProgress(approval) : 'Approve' }}</button><button class="btn-secondary" type="button" (click)="decide(approval, false)" [disabled]="decidingApprovalId === approval.id">Not now</button></div>
           </article>
           <div class="quiet-state" *ngIf="!approvals.length"><span>✓</span><strong>You’re in control</strong><p>No decisions are waiting. Agents can research and analyze without interrupting you.</p></div>
 
@@ -68,6 +68,7 @@ export class ConciergeComponent implements OnInit, OnDestroy {
   approvals: ApprovalRequest[] = [];
   draft = '';
   sending = false;
+  decidingApprovalId: number | null = null;
   private eventSub?: Subscription;
   prompts = [
     'What should I focus on today?',
@@ -125,7 +126,18 @@ export class ConciergeComponent implements OnInit, OnDestroy {
   }
 
   decide(approval: ApprovalRequest, approved: boolean): void {
-    this.api.decideApproval(approval.id, approved).subscribe(() => this.load());
+    if (this.decidingApprovalId) return;
+    this.decidingApprovalId = approval.id;
+    this.api.decideApproval(approval.id, approved).subscribe({
+      next: () => { this.decidingApprovalId = null; this.load(); },
+      error: () => { this.decidingApprovalId = null; },
+    });
+  }
+
+  approvalProgress(approval: ApprovalRequest): string {
+    if (approval.kind === 'render_bundle') return 'Rendering PDFs…';
+    if (approval.kind === 'prepare_application') return 'Preparing materials…';
+    return 'Saving decision…';
   }
 
   agentName(agent: string): string {

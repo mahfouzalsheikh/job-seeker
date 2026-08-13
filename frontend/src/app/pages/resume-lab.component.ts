@@ -90,8 +90,9 @@ import { ApiService, CoverLetter, JobPosting, Resume } from '../services/api.ser
           <h3>Resume Markdown</h3>
           <pre class="resume-preview">{{ selected.content_markdown }}</pre>
 
+          <label class="risk-accept" *ngIf="!selected.approved && (selected.validation?.unsupported_claims || []).length"><input type="checkbox" [(ngModel)]="acceptResumeRisk" name="acceptResumeRisk"><span>I reviewed the unsupported claims above and accept the risk for this version.</span></label>
           <div class="action-row">
-            <button class="btn-primary" type="button" (click)="approve(selected)" *ngIf="!selected.approved">✓ Approve draft</button>
+            <button class="btn-primary" type="button" (click)="approve(selected)" *ngIf="!selected.approved" [disabled]="approvingResumeId === selected.id || ((selected.validation?.unsupported_claims || []).length && !acceptResumeRisk)"><span class="spinner" *ngIf="approvingResumeId === selected.id" aria-hidden="true"></span>{{ approvingResumeId === selected.id ? 'Approving…' : '✓ Approve draft' }}</button>
             <button class="btn-secondary" type="button" (click)="download(selected)">↓ Export markdown</button>
           </div>
         </section>
@@ -101,7 +102,8 @@ import { ApiService, CoverLetter, JobPosting, Resume } from '../services/api.ser
           <div class="validation-grid"><div><span>Evidence facts</span><strong>{{ (selectedLetter.content_json?.evidence_fact_ids || []).length }}</strong></div><div><span>Unsupported claims</span><strong>{{ (selectedLetter.validation?.unsupported_claims || []).length }}</strong></div><div><span>Risk notes</span><strong>{{ (selectedLetter.validation?.risk_notes || []).length }}</strong></div></div>
           <h3>Review notes</h3><div class="chip-row"><span class="status-chip warn" *ngFor="let note of selectedLetter.validation?.risk_notes || []">{{ note }}</span><span class="muted" *ngIf="!(selectedLetter.validation?.risk_notes || []).length">No risk notes detected.</span></div>
           <h3>Cover letter</h3><pre class="resume-preview">{{ selectedLetter.content_markdown }}</pre>
-          <div class="action-row"><button class="btn-primary" type="button" (click)="approveLetter(selectedLetter)" *ngIf="!selectedLetter.approved">✓ Approve cover letter</button></div>
+          <label class="risk-accept" *ngIf="!selectedLetter.approved && (selectedLetter.validation?.unsupported_claims || []).length"><input type="checkbox" [(ngModel)]="acceptLetterRisk" name="acceptLetterRisk"><span>I reviewed the unsupported claims above and accept the risk for this version.</span></label>
+          <div class="action-row"><button class="btn-primary" type="button" (click)="approveLetter(selectedLetter)" *ngIf="!selectedLetter.approved" [disabled]="approvingLetterId === selectedLetter.id || ((selectedLetter.validation?.unsupported_claims || []).length && !acceptLetterRisk)"><span class="spinner" *ngIf="approvingLetterId === selectedLetter.id" aria-hidden="true"></span>{{ approvingLetterId === selectedLetter.id ? 'Approving…' : '✓ Approve cover letter' }}</button></div>
         </section>
       </div>
     </section>
@@ -118,6 +120,10 @@ export class ResumeLabComponent implements OnInit {
   newMarkdown = '';
   message = '';
   generating = false;
+  approvingResumeId: number | null = null;
+  approvingLetterId: number | null = null;
+  acceptResumeRisk = false;
+  acceptLetterRisk = false;
   activeTab: 'library' | 'create' | 'tailor' = 'library';
 
   constructor(private api: ApiService) {}
@@ -171,14 +177,18 @@ export class ResumeLabComponent implements OnInit {
   }
 
   approve(resume: Resume): void {
-    this.api.approveResume(resume.id).subscribe((updated) => {
+    this.approvingResumeId = resume.id;
+    this.api.approveResume(resume.id, this.acceptResumeRisk).subscribe((updated) => {
       this.selected = updated;
+      this.approvingResumeId = null;
+      this.acceptResumeRisk = false;
       this.load();
-    });
+    }, (error) => { this.approvingResumeId = null; this.message = error?.error?.detail || 'Could not approve this resume.'; });
   }
 
   approveLetter(letter: CoverLetter): void {
-    this.api.approveCoverLetter(letter.id).subscribe((updated) => { this.selectedLetter = updated; this.load(); });
+    this.approvingLetterId = letter.id;
+    this.api.approveCoverLetter(letter.id, this.acceptLetterRisk).subscribe((updated) => { this.selectedLetter = updated; this.approvingLetterId = null; this.acceptLetterRisk = false; this.load(); }, (error) => { this.approvingLetterId = null; this.message = error?.error?.detail || 'Could not approve this cover letter.'; });
   }
 
   download(resume: Resume): void {

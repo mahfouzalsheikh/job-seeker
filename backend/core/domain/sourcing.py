@@ -178,6 +178,8 @@ def validate_public_url(url: str) -> None:
 
 def connector_for(source: JobSource) -> SourceConnector:
     connector_name = clean_text((source.config or {}).get('connector')).lower()
+    if (source.config or {}).get('demo') and not connector_name:
+        return SourceConnector(source)
     if source.kind == 'rss':
         connector_name = connector_name or 'rss'
     if source.kind == 'manual':

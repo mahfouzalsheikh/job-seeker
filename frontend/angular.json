@@ -11,14 +11,20 @@
       "prefix": "app",
       "architect": {
         "build": {
-          "builder": "@angular-devkit/build-angular:application",
+          "builder": "@angular/build:application",
           "options": {
             "outputPath": "dist/job-search-studio-web",
             "index": "src/index.html",
             "browser": "src/main.ts",
             "polyfills": ["zone.js"],
             "tsConfig": "tsconfig.app.json",
-            "assets": [],
+            "assets": [
+              {
+                "glob": "job-search-studio-user-guide.html",
+                "input": "src",
+                "output": "/"
+              }
+            ],
             "styles": ["src/styles.css"],
             "scripts": []
           },
@@ -42,7 +48,7 @@
           "defaultConfiguration": "production"
         },
         "serve": {
-          "builder": "@angular-devkit/build-angular:dev-server",
+          "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
               "buildTarget": "job-search-studio-web:build:production"
@@ -60,4 +66,3 @@
     "analytics": false
   }
 }
-

@@ -11,19 +11,30 @@ from .services import ingest_profile_document, recompute_match
 def ingest_profile_document_task(document_id: int) -> dict:
     document = ProfileDocument.objects.select_related('owner').get(pk=document_id)
     publish_user_event(document.owner_id, 'profile_ingestion_started', {'document_id': document.id})
-    result = ingest_profile_document(document)
-    publish_user_event(document.owner_id, 'profile_ingestion_finished', {'document_id': document.id, **result})
-    return result
+    try:
+        result = ingest_profile_document(document)
+        publish_user_event(document.owner_id, 'profile_ingestion_finished', {'document_id': document.id, 'status': document.status, **result})
+        return result
+    except Exception as exc:
+        document.status = 'failed'
+        document.status_message = str(exc)[:500]
+        document.save(update_fields=['status', 'status_message', 'updated_at'])
+        publish_user_event(document.owner_id, 'profile_ingestion_finished', {'document_id': document.id, 'status': 'failed', 'error': str(exc)[:500]})
+        raise
 
 
 @shared_task
 def recompute_job_match_task(job_id: int) -> dict:
     job = JobPosting.objects.select_related('owner').get(pk=job_id)
     publish_user_event(job.owner_id, 'match_recompute_started', {'job_id': job.id})
-    match = recompute_match(job)
-    payload = {'job_id': job.id, 'match_id': match.id, 'score': match.score, 'confidence': match.confidence}
-    publish_user_event(job.owner_id, 'match_recomputed', payload)
-    return payload
+    try:
+        match = recompute_match(job)
+        payload = {'job_id': job.id, 'match_id': match.id, 'score': match.score, 'confidence': match.confidence}
+        publish_user_event(job.owner_id, 'match_recomputed', payload)
+        return payload
+    except Exception as exc:
+        publish_user_event(job.owner_id, 'match_recompute_failed', {'job_id': job.id, 'error': str(exc)[:500]})
+        raise
 
 
 @shared_task

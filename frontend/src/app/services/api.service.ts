@@ -319,16 +319,16 @@ export class ApiService {
     return this.http.post<Resume>(`${environment.apiBaseUrl}/resumes/tailor/`, { job, canonical_resume });
   }
 
-  approveResume(id: number): Observable<Resume> {
-    return this.http.post<Resume>(`${environment.apiBaseUrl}/resumes/${id}/approve/`, {});
+  approveResume(id: number, acceptRisk = false): Observable<Resume> {
+    return this.http.post<Resume>(`${environment.apiBaseUrl}/resumes/${id}/approve/`, { accept_risk: acceptRisk });
   }
 
   coverLetters(params: Record<string, string> = {}): Observable<Paged<CoverLetter>> {
     return this.http.get<Paged<CoverLetter>>(`${environment.apiBaseUrl}/cover-letters/`, { params: new HttpParams({ fromObject: params }) });
   }
 
-  approveCoverLetter(id: number): Observable<CoverLetter> {
-    return this.http.post<CoverLetter>(`${environment.apiBaseUrl}/cover-letters/${id}/approve/`, {});
+  approveCoverLetter(id: number, acceptRisk = false): Observable<CoverLetter> {
+    return this.http.post<CoverLetter>(`${environment.apiBaseUrl}/cover-letters/${id}/approve/`, { accept_risk: acceptRisk });
   }
 
   exportResumeMarkdown(id: number): Observable<Blob> {
@@ -349,6 +349,10 @@ export class ApiService {
 
   artifacts(): Observable<Paged<Artifact>> {
     return this.http.get<Paged<Artifact>>(`${environment.apiBaseUrl}/artifacts/`);
+  }
+
+  downloadArtifact(id: number): Observable<Blob> {
+    return this.http.get(`${environment.apiBaseUrl}/artifacts/${id}/download/`, { responseType: 'blob' });
   }
 
   approvals(status = ''): Observable<Paged<ApprovalRequest>> {

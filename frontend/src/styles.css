@@ -1954,6 +1954,75 @@ a.metric:hover {
   }
 }
 
+/* Durable progress feedback */
+.spinner {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: studio-spin .72s linear infinite;
+}
+
+.global-work {
+  position: fixed;
+  z-index: 75;
+  right: 24px;
+  bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(360px, calc(100vw - 30px));
+  padding: 14px 16px;
+  border: 1px solid rgba(201, 244, 90, .28);
+  border-radius: 15px;
+  color: #f8fbf5;
+  background: rgba(16, 37, 31, .96);
+  box-shadow: 0 18px 50px rgba(16, 37, 31, .28);
+  backdrop-filter: blur(14px);
+}
+
+.global-work .spinner { color: #c9f45a; }
+.global-work div { display: grid; gap: 2px; }
+.global-work small { color: #aebdb7; font-size: .7rem; }
+
+.btn-primary .spinner,
+.btn-secondary .spinner,
+.btn-mini .spinner {
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+
+.risk-accept {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid #efc379;
+  border-radius: 12px;
+  color: var(--ink-soft);
+  background: #fff9ea;
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.risk-accept input { flex: 0 0 auto; margin-top: 2px; }
+
+@keyframes studio-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 960px) {
+  .global-work { bottom: 16px; }
+}
+
+@media (max-width: 680px) {
+  .global-work { right: 15px; bottom: 15px; }
+}
+
 /* Agentic experience */
 .today-hero {
   display: flex;

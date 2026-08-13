@@ -61,6 +61,11 @@ import { RealtimeService, RealtimeStatus } from './services/realtime.service';
       <main class="app-main">
         <router-outlet></router-outlet>
       </main>
+
+      <div class="global-work" *ngIf="activeWork.length" role="status" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        <div><strong>{{ activeWork[0] }}</strong><small>{{ activeWork.length > 1 ? (activeWork.length - 1) + ' more background task' + (activeWork.length > 2 ? 's' : '') + ' running' : 'You can keep using the studio while this finishes.' }}</small></div>
+      </div>
     </div>
 
     <ng-template #authOnly>
@@ -73,6 +78,8 @@ export class AppComponent implements OnInit, OnDestroy {
   socketStatus: RealtimeStatus = 'disconnected';
   latestEvent = 'No events yet';
   navOpen = false;
+  activeWork: string[] = [];
+  private work = new Map<string, string>();
   private navSub?: Subscription;
   private authSub?: Subscription;
   private statusSub?: Subscription;
@@ -106,6 +113,7 @@ export class AppComponent implements OnInit, OnDestroy {
     });
     this.eventsSub = this.realtime.events$.subscribe((event) => {
       this.latestEvent = String(event.type || 'event').replaceAll('_', ' ');
+      this.trackWork(event);
     });
   }
 
@@ -128,5 +136,33 @@ export class AppComponent implements OnInit, OnDestroy {
     this.auth.logout();
     this.realtime.disconnect();
     this.router.navigate(['/login']);
+  }
+
+  private trackWork(event: any): void {
+    const type = String(event.type || '');
+    const data = event.data || event.payload || event;
+    const definitions: Record<string, { key: string; label?: string; done?: boolean }> = {
+      profile_ingestion_queued: { key: `profile:${data.document_id}`, label: 'Reading your profile source…' },
+      profile_ingestion_started: { key: `profile:${data.document_id}`, label: 'Extracting candidate facts…' },
+      profile_ingestion_finished: { key: `profile:${data.document_id}`, done: true },
+      source_run_queued: { key: `source:${data.source_id}`, label: 'Refreshing a job source…' },
+      source_run_started: { key: `source:${data.source_id}`, label: 'Finding and ranking fresh jobs…' },
+      source_run_finished: { key: `source:${data.source_id}`, done: true },
+      match_recompute_queued: { key: `match:${data.job_id}`, label: 'Queueing a new fit analysis…' },
+      match_recompute_started: { key: `match:${data.job_id}`, label: 'Recomputing job fit…' },
+      match_recomputed: { key: `match:${data.job_id}`, done: true },
+      match_recompute_failed: { key: `match:${data.job_id}`, done: true },
+      agent_run_queued: { key: `agent:${data.run_id}`, label: 'A specialist is queued…' },
+      agent_run_started: { key: `agent:${data.run_id}`, label: 'A specialist is working…' },
+    };
+    const definition = definitions[type];
+    if (definition) {
+      if (definition.done) this.work.delete(definition.key);
+      else this.work.set(definition.key, definition.label || 'Working…');
+    }
+    if (type === 'agent_run_updated' && ['succeeded', 'failed', 'cancelled', 'waiting_approval'].includes(String(data.status))) {
+      this.work.delete(`agent:${data.run_id}`);
+    }
+    this.activeWork = Array.from(this.work.values());
   }
 }

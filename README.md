@@ -4,7 +4,7 @@ Private, agentic job-search operating system for candidate intelligence, complia
 
 The stack intentionally follows the sibling Drawing Algorithms project:
 
-- Angular 17 frontend
+- Angular 21 frontend
 - Django / Django REST Framework backend
 - PostgreSQL
 - Redis
@@ -135,3 +135,28 @@ Applications
 Document Studio
   -> review resume and cover letter, approve claims, render PDF bundle
 ```
+
+## User Guide
+
+The standalone, responsive guide is available in the running app at
+`/job-search-studio-user-guide.html` and in the repository at
+[`frontend/src/job-search-studio-user-guide.html`](frontend/src/job-search-studio-user-guide.html).
+
+## Quality Checks
+
+```bash
+# Backend unit and integration coverage
+python backend/manage.py test core.tests
+
+# Production frontend build
+npm --prefix frontend run build
+
+# Browser journeys at desktop, tablet, and mobile sizes
+npm --prefix frontend run test:e2e
+
+# Production dependency audit
+npm --prefix frontend audit --omit=dev
+```
+
+The browser suite expects the Docker stack at `http://127.0.0.1:8021` and the
+local `admin` / `adminpass` account. Override the origin with `E2E_BASE_URL`.

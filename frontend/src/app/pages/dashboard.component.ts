@@ -10,7 +10,7 @@ import { ApiService } from '../services/api.service';
     <section class="page today-page">
       <div class="today-hero">
         <div>
-          <p class="eyebrow">Thursday · Your daily briefing</p>
+          <p class="eyebrow">{{ todayLabel }} · Your daily briefing</p>
           <h1>Good morning.<br><span>Three decisions can move your search forward.</span></h1>
           <p>{{ data?.greeting }}</p>
         </div>
@@ -54,6 +54,7 @@ import { ApiService } from '../services/api.service';
 })
 export class DashboardComponent implements OnInit {
   data: any;
+  todayLabel = new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(new Date());
   constructor(private api: ApiService) {}
   ngOnInit(): void { this.api.today().subscribe((data) => this.data = data); }
   initials(company: string): string { return (company || 'JS').split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase(); }

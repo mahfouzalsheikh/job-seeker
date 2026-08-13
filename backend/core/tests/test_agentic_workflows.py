@@ -8,6 +8,7 @@ from core.domain.matching import recompute_match
 from core.domain.orchestration import create_concierge_run, decide_approval, execute_agent_run
 from core.domain.sourcing import validate_public_url
 from core.models import (
+    AgentRun,
     Application,
     ApprovalRequest,
     Artifact,
@@ -15,8 +16,10 @@ from core.models import (
     ConversationMessage,
     JobPosting,
     JobRequirement,
+    JobSource,
     ProfileFact,
     Resume,
+    SourceRun,
 )
 
 
@@ -134,6 +137,66 @@ class AgenticApiOwnershipTests(APITestCase):
             response = self.client.post(f'/api/conversations/{thread_id}/send/', {'content': 'What should I focus on today?'}, format='json')
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         self.assertTrue(ConversationMessage.objects.filter(owner=self.owner, thread_id=thread_id, role='user').exists())
+
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+    def test_profile_source_is_ingested_and_becomes_canonical_resume(self):
+        response = self.client.post('/api/profile/documents/', {
+            'kind': 'resume',
+            'title': 'Integration resume',
+            'raw_text': 'Senior Python engineer who built Django APIs with PostgreSQL and Celery.',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        from core.models import ProfileDocument
+
+        document = ProfileDocument.objects.get(owner=self.owner, pk=response.data['id'])
+        self.assertEqual(document.status, 'ready')
+        self.assertTrue(ProfileFact.objects.filter(owner=self.owner, source_document=document).exists())
+        self.assertTrue(Resume.objects.filter(owner=self.owner, kind='canonical').exists())
+
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+    def test_manual_source_run_reaches_a_terminal_success_state(self):
+        source = JobSource.objects.create(owner=self.owner, name='Manual QA', kind='manual', config={})
+
+        response = self.client.post(f'/api/sources/{source.id}/run/', {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        run = SourceRun.objects.get(owner=self.owner, source=source)
+        source.refresh_from_db()
+        self.assertEqual(run.status, 'succeeded')
+        self.assertEqual(source.last_status, 'succeeded')
+
+    def test_application_requires_an_approved_resume_before_applied(self):
+        job = JobPosting.objects.create(
+            owner=self.owner, title='QA Engineer', description_text='Python Django', content_hash='qa-guard',
+        )
+        resume = Resume.objects.create(owner=self.owner, title='Draft', kind='tailored', target_job=job)
+        application = Application.objects.create(owner=self.owner, job=job, resume=resume, status='materials_ready')
+
+        blocked = self.client.patch(f'/api/applications/{application.id}/', {'status': 'applied'}, format='json')
+        self.assertEqual(blocked.status_code, status.HTTP_400_BAD_REQUEST)
+
+        resume.approved = True
+        resume.save(update_fields=['approved'])
+        allowed = self.client.patch(f'/api/applications/{application.id}/', {'status': 'applied'}, format='json')
+        self.assertEqual(allowed.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(allowed.data['applied_at'])
+
+    def test_rejecting_a_material_approval_cancels_without_side_effects(self):
+        job = JobPosting.objects.create(
+            owner=self.owner, title='Do Not Prepare', description_text='Python', content_hash='qa-reject',
+        )
+        run = AgentRun.objects.create(owner=self.owner, agent='documents', objective='Prepare', status='waiting_approval')
+        approval = ApprovalRequest.objects.create(
+            owner=self.owner, run=run, kind='prepare_application', title='Prepare', prompt='Proceed?', payload={'job_id': job.id},
+        )
+
+        response = self.client.post(f'/api/approvals/{approval.id}/decide/', {'approved': False}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        run.refresh_from_db()
+        self.assertEqual(run.status, 'cancelled')
+        self.assertFalse(Application.objects.filter(owner=self.owner, job=job).exists())
 
 
 class SourceSafetyTests(SimpleTestCase):

@@ -56,6 +56,7 @@ from .tasks import execute_agent_run_task, execute_source_run_task, ingest_profi
 
 
 def enqueue_profile_ingestion(document: ProfileDocument) -> dict:
+    publish_user_event(document.owner_id, 'profile_ingestion_queued', {'document_id': document.id})
     try:
         task = ingest_profile_document_task.delay(document.id)
         return {'mode': 'async', 'task_id': task.id}
@@ -185,6 +186,7 @@ class JobSourceViewSet(OwnedViewSet):
         source.last_status = 'queued'
         source.last_message = 'Discovery refresh queued.'
         source.save(update_fields=['last_status', 'last_message', 'updated_at'])
+        publish_user_event(request.user.id, 'source_run_queued', {'source_run_id': run.id, 'source_id': source.id})
         try:
             task = execute_source_run_task.delay(run.id)
             payload = {'mode': 'async', 'task_id': task.id}
@@ -248,8 +250,14 @@ class JobPostingViewSet(OwnedViewSet):
     @action(detail=True, methods=['post'])
     def recompute_match(self, request, pk=None):
         job = self.get_object()
-        task = recompute_job_match_task.delay(job.id)
-        return Response({'task_id': task.id})
+        publish_user_event(request.user.id, 'match_recompute_queued', {'job_id': job.id})
+        try:
+            task = recompute_job_match_task.delay(job.id)
+            return Response({'mode': 'async', 'task_id': task.id}, status=status.HTTP_202_ACCEPTED)
+        except Exception:
+            match = recompute_match(job)
+            publish_user_event(request.user.id, 'match_recomputed', {'job_id': job.id, 'match_id': match.id, 'score': match.score, 'confidence': match.confidence})
+            return Response({'mode': 'sync', 'match_id': match.id})
 
     @action(detail=True, methods=['post'])
     def create_application(self, request, pk=None):
@@ -273,6 +281,7 @@ class JobPostingViewSet(OwnedViewSet):
             objective=f'Prepare application materials for {job.title}',
             input={'job_id': job.id, 'intent': 'prepare_materials'},
         )
+        publish_user_event(request.user.id, 'agent_run_queued', {'run_id': run.id, 'agent': run.agent})
         try:
             task = execute_agent_run_task.delay(run.id)
             run.celery_task_id = task.id
@@ -448,6 +457,19 @@ class ArtifactViewSet(OwnedViewSet):
     serializer_class = ArtifactSerializer
     queryset = Artifact.objects.select_related('application', 'resume').all()
 
+    @action(detail=True, methods=['get'])
+    def download(self, request, pk=None):
+        artifact = self.get_object()
+        if not artifact.file:
+            raise Http404('Artifact file is unavailable.')
+        filename = Path(artifact.file.name).name
+        return FileResponse(
+            artifact.file.open('rb'),
+            content_type=artifact.mime_type or mimetypes.guess_type(filename)[0] or 'application/octet-stream',
+            as_attachment=False,
+            filename=filename,
+        )
+
 
 class ConversationThreadViewSet(OwnedViewSet):
     serializer_class = ConversationThreadSerializer
@@ -462,6 +484,7 @@ class ConversationThreadViewSet(OwnedViewSet):
         if not content:
             return Response({'content': ['This field is required.']}, status=status.HTTP_400_BAD_REQUEST)
         run = create_concierge_run(request.user, message=content, thread=thread)
+        publish_user_event(request.user.id, 'agent_run_queued', {'run_id': run.id, 'agent': run.agent})
         try:
             task = execute_agent_run_task.delay(run.id)
             run.celery_task_id = task.id

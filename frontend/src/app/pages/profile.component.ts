@@ -47,7 +47,7 @@ import { RealtimeService } from '../services/realtime.service';
           <label>Currency<select [(ngModel)]="profile.compensation_currency" name="compensationCurrency"><option>CAD</option><option>USD</option><option>EUR</option><option>GBP</option></select></label>
         </div>
         <label>Professional summary<textarea rows="6" [(ngModel)]="profile.professional_summary" name="professionalSummary" placeholder="Describe what you are great at, the work you enjoy, and what you want next."></textarea></label>
-        <div class="action-row"><button class="btn-primary" type="button" (click)="saveProfile()">Save search brief</button><span class="muted">Changes immediately affect future scoring.</span></div>
+        <div class="action-row"><button class="btn-primary" type="button" (click)="saveProfile()" [disabled]="savingProfile"><span class="spinner" *ngIf="savingProfile" aria-hidden="true"></span>{{ savingProfile ? 'Saving…' : 'Save search brief' }}</button><span class="muted">Changes immediately affect future scoring.</span></div>
       </section>
 
       <section class="panel" *ngIf="activeTab === 'preferences'">
@@ -144,7 +144,7 @@ import { RealtimeService } from '../services/realtime.service';
             </div>
             <label class="file-drop">Upload a file<input type="file" (change)="onFile($event)"><span>PDF, DOCX, or plain text</span></label>
             <label>Or paste text<textarea name="rawText" rows="9" [(ngModel)]="rawText" placeholder="Paste resume content, accomplishments, feedback, or project notes…"></textarea></label>
-            <div class="action-row form-actions"><button class="btn-primary" type="submit">Extract profile facts</button></div>
+            <div class="action-row form-actions"><button class="btn-primary" type="submit" [disabled]="extracting || (!rawText.trim() && !file)"><span class="spinner" *ngIf="extracting" aria-hidden="true"></span>{{ extracting ? 'Extracting facts…' : 'Extract profile facts' }}</button></div>
           </form>
         </section>
 
@@ -175,6 +175,8 @@ export class ProfileComponent implements OnInit, OnDestroy {
   rawText = '';
   factSearch = '';
   message = '';
+  savingProfile = false;
+  extracting = false;
   activeTab: 'overview' | 'facts' | 'preferences' | 'sources' = 'overview';
   targetRolesText = '';
   targetIndustriesText = '';
@@ -183,7 +185,7 @@ export class ProfileComponent implements OnInit, OnDestroy {
   newPreference: Partial<CandidatePreference> = { category: 'role', importance: 'strong', label: '', value: {}, verified_by_user: true };
   editingFactId: number | null = null;
   factDraft: Partial<ProfileFact> = {};
-  private file?: File;
+  file?: File;
   private realtimeSub?: Subscription;
 
   constructor(private api: ApiService, private realtime: RealtimeService) {}
@@ -191,6 +193,16 @@ export class ProfileComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.load();
     this.realtimeSub = this.realtime.events$.subscribe((event) => {
+      if (event.type === 'profile_ingestion_started') {
+        this.extracting = true;
+        this.message = 'Reading your source and extracting reusable evidence…';
+      }
+      if (event.type === 'profile_ingestion_finished') {
+        this.extracting = false;
+        this.message = event.status === 'failed'
+          ? `Profile extraction failed: ${event.error || 'review the source and try again.'}`
+          : `Profile source ready. ${event.created_facts || 0} facts added.`;
+      }
       if (['profile_ingestion_finished', 'profile_fact_updated', 'profile_fact_deleted'].includes(event.type)) {
         this.load();
       }
@@ -227,6 +239,7 @@ export class ProfileComponent implements OnInit, OnDestroy {
 
   saveProfile(): void {
     if (!this.profile) return;
+    this.savingProfile = true;
     const payload = {
       ...this.profile,
       target_roles: this.values(this.targetRolesText),
@@ -234,7 +247,10 @@ export class ProfileComponent implements OnInit, OnDestroy {
       authorized_countries: this.values(this.authorizedCountriesText),
       work_modes: this.values(this.workModesText).map((value) => value.toLowerCase()),
     };
-    this.api.updateCandidateProfile(payload).subscribe((profile) => { this.profile = profile; this.message = 'Search brief saved.'; });
+    this.api.updateCandidateProfile(payload).subscribe({
+      next: (profile) => { this.profile = profile; this.message = 'Search brief saved.'; this.savingProfile = false; },
+      error: () => { this.message = 'Could not save the search brief.'; this.savingProfile = false; },
+    });
   }
 
   addPreference(): void {
@@ -258,6 +274,7 @@ export class ProfileComponent implements OnInit, OnDestroy {
   }
 
   createDocument(): void {
+    if (this.extracting || (!this.rawText.trim() && !this.file)) return;
     const payload = new FormData();
     payload.set('kind', this.kind);
     payload.set('title', this.title || 'Profile source');
@@ -265,14 +282,15 @@ export class ProfileComponent implements OnInit, OnDestroy {
     if (this.file) {
       payload.set('upload', this.file);
     }
-    this.message = 'Queued for ingestion.';
+    this.extracting = true;
+    this.message = 'Uploading source material…';
     this.api.createDocument(payload).subscribe({
       next: () => {
         this.rawText = '';
         this.file = undefined;
         this.load();
       },
-      error: () => this.message = 'Could not ingest document.',
+      error: () => { this.extracting = false; this.message = 'Could not ingest document.'; },
     });
   }
 

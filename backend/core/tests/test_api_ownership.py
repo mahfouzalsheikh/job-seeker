@@ -1,9 +1,11 @@
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
+from django.test import override_settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from core.models import Application, JobPosting, JobSource, ProfileDocument, ProfileFact, Resume
+from core.models import Application, Artifact, JobPosting, JobSource, ProfileDocument, ProfileFact, Resume
 
 
 class OwnedRelationApiTests(APITestCase):
@@ -142,6 +144,37 @@ class OwnedRelationApiTests(APITestCase):
             with self.subTest(path=path):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    @override_settings(MEDIA_ROOT='/tmp/job-seeker-private-artifact-tests')
+    def test_artifact_download_requires_ownership(self):
+        owner_artifact = Artifact.objects.create(
+            owner=self.owner,
+            application=self.owner_application,
+            resume=self.owner_resume,
+            kind='resume_pdf',
+            title='Owner artifact',
+            mime_type='application/pdf',
+        )
+        owner_artifact.file.save('owner.pdf', ContentFile(b'%PDF-1.4 owner'), save=True)
+        artifact = Artifact.objects.create(
+            owner=self.other,
+            application=self.other_application,
+            resume=self.other_resume,
+            kind='resume_pdf',
+            title='Private artifact',
+            mime_type='application/pdf',
+        )
+        artifact.file.save('private.pdf', ContentFile(b'%PDF-1.4 private'), save=True)
+
+        allowed = self.client.get(f'/api/artifacts/{owner_artifact.id}/download/')
+        detail = self.client.get(f'/api/artifacts/{owner_artifact.id}/')
+        response = self.client.get(f'/api/artifacts/{artifact.id}/download/')
+
+        self.assertEqual(allowed.status_code, status.HTTP_200_OK)
+        self.assertEqual(allowed['Content-Type'], 'application/pdf')
+        self.assertNotIn('file', detail.data)
+        self.assertTrue(detail.data['file_url'].endswith(f'/api/artifacts/{owner_artifact.id}/download/'))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
 class ProfileFactApiTests(APITestCase):

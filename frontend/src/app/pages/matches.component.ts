@@ -1,12 +1,13 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { ApiService, JobPosting } from '../services/api.service';
+import { RealtimeService } from '../services/realtime.service';
 
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule],
   template: `
     <section class="page">
       <div class="page-head">
@@ -29,8 +30,8 @@ import { ApiService, JobPosting } from '../services/api.service';
         <label>Job URL <span class="optional">Optional</span><input name="sourceUrl" [(ngModel)]="sourceUrl" placeholder="https://company.example/jobs/123"></label>
         <label>Job description<textarea name="jobText" rows="13" [(ngModel)]="jobText" placeholder="Paste the full job description here…"></textarea></label>
         <div class="action-row form-actions">
-          <button class="btn-primary" type="button" (click)="importJob()" [disabled]="!jobText.trim()">Extract and rank</button>
-          <button class="btn-secondary" type="button" (click)="activeTab = 'matches'">Cancel</button>
+          <button class="btn-primary" type="button" (click)="importJob()" [disabled]="!jobText.trim() || importing"><span class="spinner" *ngIf="importing" aria-hidden="true"></span>{{ importing ? 'Extracting and ranking…' : 'Extract and rank' }}</button>
+          <button class="btn-secondary" type="button" (click)="activeTab = 'matches'" [disabled]="importing">Cancel</button>
         </div>
       </section>
 
@@ -101,9 +102,9 @@ import { ApiService, JobPosting } from '../services/api.service';
           </div>
 
           <div class="action-row">
-            <button class="btn-primary" type="button" (click)="prepare(selected)">Approve to prepare →</button>
-            <button class="btn-secondary" type="button" (click)="createApplication(selected)">Save to pipeline</button>
-            <button class="btn-secondary" type="button" (click)="recompute(selected)">Recompute</button>
+            <button class="btn-primary" type="button" (click)="prepare(selected)" [disabled]="preparingJobId === selected.id"><span class="spinner" *ngIf="preparingJobId === selected.id" aria-hidden="true"></span>{{ preparingJobId === selected.id ? 'Starting specialist…' : 'Approve to prepare →' }}</button>
+            <button class="btn-secondary" type="button" (click)="createApplication(selected)" [disabled]="savingJobId === selected.id"><span class="spinner" *ngIf="savingJobId === selected.id" aria-hidden="true"></span>{{ savingJobId === selected.id ? 'Saving…' : 'Save to pipeline' }}</button>
+            <button class="btn-secondary" type="button" (click)="recompute(selected)" [disabled]="recomputingJobId === selected.id"><span class="spinner" *ngIf="recomputingJobId === selected.id" aria-hidden="true"></span>{{ recomputingJobId === selected.id ? 'Recomputing…' : 'Recompute' }}</button>
           </div>
         </section>
 
@@ -117,7 +118,7 @@ import { ApiService, JobPosting } from '../services/api.service';
     </section>
   `,
 })
-export class MatchesComponent implements OnInit {
+export class MatchesComponent implements OnInit, OnDestroy {
   jobs: JobPosting[] = [];
   selected?: JobPosting;
   jobText = '';
@@ -126,12 +127,30 @@ export class MatchesComponent implements OnInit {
   minScore = '';
   message = '';
   activeTab: 'matches' | 'import' = 'matches';
+  importing = false;
+  recomputingJobId: number | null = null;
+  preparingJobId: number | null = null;
+  savingJobId: number | null = null;
+  private eventSub?: Subscription;
 
-  constructor(private api: ApiService) {}
+  constructor(private api: ApiService, private realtime: RealtimeService) {}
 
   ngOnInit(): void {
     this.load();
+    this.eventSub = this.realtime.events$.subscribe((event) => {
+      if (event.type === 'match_recomputed') {
+        if (this.recomputingJobId === event.job_id) this.recomputingJobId = null;
+        this.message = 'Fit analysis updated.';
+        this.load();
+      }
+      if (event.type === 'match_recompute_failed' && this.recomputingJobId === event.job_id) {
+        this.recomputingJobId = null;
+        this.message = 'Could not recompute this match.';
+      }
+    });
   }
+
+  ngOnDestroy(): void { this.eventSub?.unsubscribe(); }
 
   load(): void {
     const params: Record<string, string> = {};
@@ -152,7 +171,9 @@ export class MatchesComponent implements OnInit {
   }
 
   importJob(): void {
-    this.message = 'Importing and ranking job.';
+    if (this.importing) return;
+    this.importing = true;
+    this.message = 'Extracting the posting and ranking it against your evidence…';
     this.api.importJob({ text: this.jobText, source_url: this.sourceUrl }).subscribe({
       next: (job) => {
         this.message = 'Job imported.';
@@ -161,13 +182,19 @@ export class MatchesComponent implements OnInit {
         this.load();
         this.selected = job;
         this.activeTab = 'matches';
+        this.importing = false;
       },
-      error: () => this.message = 'Import failed.',
+      error: () => { this.message = 'Import failed. Check the posting text and try again.'; this.importing = false; },
     });
   }
 
   recompute(job: JobPosting): void {
-    this.api.recomputeJobMatch(job.id).subscribe(() => this.message = 'Match recompute queued.');
+    if (this.recomputingJobId) return;
+    this.recomputingJobId = job.id;
+    this.api.recomputeJobMatch(job.id).subscribe({
+      next: () => this.message = 'Fit analysis is running in the background.',
+      error: () => { this.recomputingJobId = null; this.message = 'Could not recompute this match.'; },
+    });
   }
 
   tailor(job: JobPosting): void {
@@ -179,17 +206,21 @@ export class MatchesComponent implements OnInit {
   }
 
   prepare(job: JobPosting): void {
+    if (this.preparingJobId) return;
+    this.preparingJobId = job.id;
     this.message = 'Starting the preparation workflow.';
     this.api.requestPreparation(job.id).subscribe({
-      next: () => this.message = 'Approval requested. Open Concierge to review it.',
-      error: () => this.message = 'Could not start the preparation workflow.',
+      next: () => { this.preparingJobId = null; this.message = 'Approval requested. Open Concierge to review it.'; },
+      error: () => { this.preparingJobId = null; this.message = 'Could not start the preparation workflow.'; },
     });
   }
 
   createApplication(job: JobPosting): void {
+    if (this.savingJobId) return;
+    this.savingJobId = job.id;
     this.api.createApplication(job.id).subscribe({
-      next: () => this.message = 'Application created in pipeline.',
-      error: () => this.message = 'Could not create application.',
+      next: () => { this.savingJobId = null; this.message = 'Application created in pipeline.'; },
+      error: () => { this.savingJobId = null; this.message = 'Could not create application.'; },
     });
   }
 }

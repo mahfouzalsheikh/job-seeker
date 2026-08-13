@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:20 AS frontend-build
+FROM node:24.15.0 AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json* frontend/angular.json frontend/tsconfig.json frontend/tsconfig.app.json ./
 COPY frontend/src ./src
@@ -30,4 +30,3 @@ WORKDIR /app/backend
 EXPOSE 8000
 
 ENTRYPOINT ["/entrypoint.sh"]
-

@@ -71,8 +71,8 @@ interface StatusDef {
         </label>
 
           <div class="action-row">
-            <button class="btn-primary" type="button" (click)="saveSelected()">Save</button>
-            <button class="btn-secondary" type="button" (click)="requestRender()" *ngIf="selected.resume">Render PDF bundle</button>
+            <button class="btn-primary" type="button" (click)="saveSelected()" [disabled]="saving"><span class="spinner" *ngIf="saving" aria-hidden="true"></span>{{ saving ? 'Saving…' : 'Save' }}</button>
+            <button class="btn-secondary" type="button" (click)="requestRender()" *ngIf="selected.resume" [disabled]="requestingRender"><span class="spinner" *ngIf="requestingRender" aria-hidden="true"></span>{{ requestingRender ? 'Requesting…' : 'Render PDF bundle' }}</button>
             <span class="muted">{{ message }}</span>
         </div>
 
@@ -95,6 +95,8 @@ export class PipelineComponent implements OnInit {
   selected?: ApplicationRecord;
   followUpLocal = '';
   message = '';
+  saving = false;
+  requestingRender = false;
   statuses: StatusDef[] = [
     { key: 'review', label: 'Review' },
     { key: 'discovered', label: 'Discovered' },
@@ -148,6 +150,7 @@ export class PipelineComponent implements OnInit {
 
   saveSelected(): void {
     if (!this.selected) return;
+    this.saving = true;
     const payload: Partial<ApplicationRecord> = {
       status: this.selected.status,
       notes: this.selected.notes,
@@ -160,11 +163,16 @@ export class PipelineComponent implements OnInit {
       this.selected = updated;
       this.syncFollowUpLocal();
       this.load();
-    });
+      this.saving = false;
+    }, () => { this.saving = false; this.message = 'Could not save the application.'; });
   }
 
   requestRender(): void {
     if (!this.selected) return;
-    this.api.requestRender(this.selected.id).subscribe(() => this.message = 'PDF rendering approval is waiting in Concierge.');
+    this.requestingRender = true;
+    this.api.requestRender(this.selected.id).subscribe({
+      next: () => { this.requestingRender = false; this.message = 'PDF rendering approval is waiting in Concierge.'; },
+      error: (error) => { this.requestingRender = false; this.message = error?.error?.detail || 'Could not request PDF rendering.'; },
+    });
   }
 }

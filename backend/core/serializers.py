@@ -255,7 +255,7 @@ class ArtifactSerializer(OwnerScopedRelationsMixin, serializers.ModelSerializer)
     class Meta:
         model = Artifact
         fields = [
-            'id', 'application', 'resume', 'cover_letter', 'kind', 'title', 'file', 'file_url',
+            'id', 'application', 'resume', 'cover_letter', 'kind', 'title', 'file_url',
             'content_text', 'metadata', 'version', 'content_hash', 'mime_type', 'approved',
             'created_at', 'updated_at',
         ]
@@ -265,7 +265,7 @@ class ArtifactSerializer(OwnerScopedRelationsMixin, serializers.ModelSerializer)
         if not obj.file:
             return ''
         request = self.context.get('request')
-        url = obj.file.url
+        url = f'/api/artifacts/{obj.pk}/download/'
         return request.build_absolute_uri(url) if request else url
 
 
