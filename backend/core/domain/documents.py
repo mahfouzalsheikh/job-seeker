@@ -16,6 +16,13 @@ from core.models import Application, Artifact, CoverLetter, JobPosting, ProfileF
 from core.services import create_tailored_resume
 
 
+def _inline_markdown(value: str) -> str:
+    rendered = html.escape(value)
+    rendered = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', rendered)
+    rendered = re.sub(r'(?<!\*)\*(.+?)\*(?!\*)', r'<em>\1</em>', rendered)
+    return rendered
+
+
 def _markdown_to_html(markdown: str) -> str:
     lines = []
     in_list = False
@@ -25,7 +32,7 @@ def _markdown_to_html(markdown: str) -> str:
             if not in_list:
                 lines.append('<ul>')
                 in_list = True
-            lines.append(f'<li>{html.escape(line[2:])}</li>')
+            lines.append(f'<li>{_inline_markdown(line[2:])}</li>')
             continue
         if in_list:
             lines.append('</ul>')
@@ -33,32 +40,65 @@ def _markdown_to_html(markdown: str) -> str:
         if not line:
             continue
         if line.startswith('### '):
-            lines.append(f'<h3>{html.escape(line[4:])}</h3>')
+            lines.append(f'<h3>{_inline_markdown(line[4:])}</h3>')
         elif line.startswith('## '):
-            lines.append(f'<h2>{html.escape(line[3:])}</h2>')
+            lines.append(f'<h2>{_inline_markdown(line[3:])}</h2>')
         elif line.startswith('# '):
-            lines.append(f'<h1>{html.escape(line[2:])}</h1>')
+            lines.append(f'<h1>{_inline_markdown(line[2:])}</h1>')
+        elif line == '---':
+            lines.append('<hr>')
         else:
-            lines.append(f'<p>{html.escape(line)}</p>')
+            lines.append(f'<p>{_inline_markdown(line)}</p>')
     if in_list:
         lines.append('</ul>')
     return '\n'.join(lines)
 
 
-def document_html(title: str, markdown: str, *, kind: str) -> str:
-    accent = '#177d69' if kind == 'resume' else '#7558d8'
+def _document_design(design: dict[str, Any] | None, *, kind: str) -> dict[str, str]:
+    supplied = design if isinstance(design, dict) else {}
+    accent = clean_text(supplied.get('accent'))
+    if not re.fullmatch(r'#[0-9a-fA-F]{6}', accent):
+        accent = '#177d69' if kind == 'resume' else '#7558d8'
+    template = supplied.get('template') if supplied.get('template') in {'modern', 'classic', 'minimal'} else 'modern'
+    density = supplied.get('density') if supplied.get('density') in {'compact', 'balanced', 'spacious'} else 'balanced'
+    page_size = supplied.get('page_size') if supplied.get('page_size') in {'Letter', 'A4'} else 'Letter'
+    return {'accent': accent, 'template': template, 'density': density, 'page_size': page_size}
+
+
+def document_html(title: str, markdown: str, *, kind: str, design: dict[str, Any] | None = None) -> str:
+    selected = _document_design(design, kind=kind)
+    accent = selected['accent']
+    density = {
+        'compact': {'margin': '0.42in 0.52in', 'font': '9.4pt', 'line': '1.27', 'section': '11px'},
+        'balanced': {'margin': '0.55in 0.62in', 'font': '10.2pt', 'line': '1.38', 'section': '15px'},
+        'spacious': {'margin': '0.68in 0.72in', 'font': '10.7pt', 'line': '1.48', 'section': '19px'},
+    }[selected['density']]
+    template_css = {
+        'modern': f'''body {{ font-family: Arial, sans-serif; }}
+h1 {{ text-align: left; letter-spacing: -.7px; }}
+h2 {{ color: {accent}; border-bottom: 1px solid #cbd7d2; text-transform: uppercase; letter-spacing: .7px; }}''',
+        'classic': f'''body {{ font-family: Georgia, "Times New Roman", serif; }}
+h1 {{ text-align: center; letter-spacing: .2px; }}
+h1 + p {{ text-align: center; }}
+h2 {{ color: #17231f; border-bottom: 1.5px solid {accent}; text-align: center; text-transform: uppercase; letter-spacing: 1.1px; }}''',
+        'minimal': f'''body {{ font-family: Arial, sans-serif; }}
+h1 {{ text-align: left; font-weight: 600; letter-spacing: -1px; }}
+h2 {{ color: #17231f; border-left: 3px solid {accent}; padding-left: 8px; text-transform: none; letter-spacing: 0; }}''',
+    }[selected['template']]
     return f'''<!doctype html>
 <html><head><meta charset="utf-8"><title>{html.escape(title)}</title><style>
-@page {{ size: Letter; margin: 0.55in 0.62in; }}
+@page {{ size: {selected['page_size']}; margin: {density['margin']}; }}
 * {{ box-sizing: border-box; }}
-body {{ margin: 0; color: #17231f; font: 10.4pt/1.38 Arial, sans-serif; }}
+body {{ margin: 0; color: #17231f; font-size: {density['font']}; line-height: {density['line']}; }}
 h1 {{ margin: 0 0 8px; font-size: 25pt; letter-spacing: -.7px; }}
-h2 {{ margin: 16px 0 7px; padding-bottom: 4px; color: {accent}; border-bottom: 1px solid #cbd7d2; font-size: 12pt; text-transform: uppercase; letter-spacing: .7px; }}
+h2 {{ margin: {density['section']} 0 7px; padding-bottom: 4px; font-size: 11.5pt; break-after: avoid; }}
 h3 {{ margin: 11px 0 4px; font-size: 10.8pt; }}
 p {{ margin: 0 0 7px; }}
 ul {{ margin: 4px 0 10px; padding-left: 18px; }}
 li {{ margin-bottom: 4px; }}
 a {{ color: {accent}; }}
+hr {{ margin: 8px 0; border: 0; border-top: 1px solid #d7dfdc; }}
+{template_css}
 </style></head><body>{_markdown_to_html(markdown)}</body></html>'''
 
 
@@ -113,9 +153,12 @@ def validate_resume_claims(resume: Resume, facts: list[ProfileFact]) -> dict[str
     ResumeClaim.objects.filter(resume=resume).delete()
     fact_terms = [(fact, set(keywords(f'{fact.title} {fact.statement}', limit=80))) for fact in facts]
     unsupported = []
+    seen_section = False
     for raw in resume.content_markdown.splitlines():
+        if raw.lstrip().startswith('## '):
+            seen_section = True
         line = clean_text(raw.lstrip('-* '))
-        if len(line) < 24 or raw.lstrip().startswith('#'):
+        if len(line) < 24 or raw.lstrip().startswith('#') or not seen_section:
             continue
         claim_terms = set(keywords(line, limit=60))
         best_fact = None
@@ -135,7 +178,7 @@ def validate_resume_claims(resume: Resume, facts: list[ProfileFact]) -> dict[str
         if not supported:
             unsupported.append(line)
     validation = dict(resume.validation or {})
-    validation['unsupported_claims'] = list(dict.fromkeys(validation.get('unsupported_claims', []) + unsupported))
+    validation['unsupported_claims'] = list(dict.fromkeys(unsupported))
     validation['claim_count'] = resume.claims.count()
     validation['supported_claim_count'] = resume.claims.exclude(support_status='unsupported').count()
     resume.validation = validation
@@ -186,8 +229,8 @@ def _store_artifact(*, owner, title: str, kind: str, content: bytes, filename: s
     return artifact
 
 
-def render_pdf(*, owner, title: str, markdown: str, kind: str, application=None, resume=None, cover_letter=None) -> Artifact:
-    rendered_html = document_html(title, markdown, kind=kind)
+def render_pdf(*, owner, title: str, markdown: str, kind: str, application=None, resume=None, cover_letter=None, design=None) -> Artifact:
+    rendered_html = document_html(title, markdown, kind=kind, design=design)
     slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')[:80] or kind
     gotenberg_url = getattr(settings, 'GOTENBERG_URL', '').rstrip('/')
     if gotenberg_url:
@@ -227,6 +270,7 @@ def render_application_bundle(owner, *, application: Application) -> list[Artifa
         kind='resume',
         application=application,
         resume=application.resume,
+        design=(application.resume.content_json or {}).get('design'),
     )]
     if cover_letter:
         artifacts.append(render_pdf(
@@ -238,4 +282,3 @@ def render_application_bundle(owner, *, application: Application) -> list[Artifa
             cover_letter=cover_letter,
         ))
     return artifacts
-

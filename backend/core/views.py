@@ -31,6 +31,7 @@ from .models import (
     SourceRun,
 )
 from .realtime_events import publish_user_event
+from .domain.documents import render_pdf, validate_resume_claims
 from .serializers import (
     AgentRunSerializer,
     ApplicationEventSerializer,
@@ -120,6 +121,32 @@ class CandidateProfileView(APIView):
         profile.refresh_from_db()
         publish_user_event(request.user.id, 'candidate_profile_updated', {'profile_id': profile.id})
         return Response(CandidateProfileSerializer(profile).data)
+
+
+class CandidateOnboardingView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .domain.profiles import candidate_profile, onboarding_snapshot
+
+        snapshot = onboarding_snapshot(request.user)
+        snapshot['profile'] = CandidateProfileSerializer(candidate_profile(request.user)).data
+        return Response(snapshot)
+
+    def post(self, request):
+        from .domain.profiles import answer_onboarding, candidate_profile
+
+        step = str(request.data.get('step', '')).strip()
+        answers = request.data.get('answers') or {}
+        if not step or not isinstance(answers, dict):
+            return Response({'detail': 'A step and answer object are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            snapshot = answer_onboarding(request.user, step=step, answers=answers)
+        except (TypeError, ValueError) as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        snapshot['profile'] = CandidateProfileSerializer(candidate_profile(request.user)).data
+        publish_user_event(request.user.id, 'candidate_onboarding_updated', {'step': step, 'next_step': snapshot['step']['id']})
+        return Response(snapshot)
 
 
 class CandidatePreferenceViewSet(OwnedViewSet):
@@ -337,6 +364,8 @@ class ResumeViewSet(OwnedViewSet):
             job=serializer.validated_data['job'],
             canonical=serializer.validated_data.get('canonical_resume'),
         )
+        facts = list(ProfileFact.objects.filter(owner=request.user).order_by('-verified_by_user', 'fact_type', 'title')[:160])
+        validate_resume_claims(resume, facts)
         publish_user_event(request.user.id, 'resume_tailoring_finished', {'resume_id': resume.id, 'job_id': resume.target_job_id})
         return Response(self.get_serializer(resume).data, status=status.HTTP_201_CREATED)
 
@@ -357,6 +386,21 @@ class ResumeViewSet(OwnedViewSet):
         filename = f'{resume.title.lower().replace(" ", "-")}.md'
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
+
+    @action(detail=True, methods=['post'])
+    def export_pdf(self, request, pk=None):
+        resume = self.get_object()
+        artifact = render_pdf(
+            owner=request.user,
+            title=resume.title,
+            markdown=resume.content_markdown,
+            kind='resume',
+            resume=resume,
+            design=(resume.content_json or {}).get('design'),
+        )
+        artifact.file.open('rb')
+        filename = Path(artifact.file.name).name
+        return FileResponse(artifact.file, as_attachment=True, filename=filename, content_type=artifact.mime_type)
 
 
 class CoverLetterViewSet(OwnedViewSet):

@@ -5,7 +5,7 @@ const routes = [
   ['/concierge', 'Your job search has a chief of staff.'],
   ['/matches', 'Decide where your effort belongs.'],
   ['/pipeline', 'Every stage should create the next useful action.'],
-  ['/resume-lab', 'Resume Lab'],
+  ['/resume-lab', 'Resume Studio'],
   ['/profile', 'The system should know the whole story.'],
   ['/sources', 'A quiet, reliable discovery engine.'],
   ['/strategy', 'Strategy'],
@@ -22,6 +22,11 @@ async function login(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole('heading', { name: /Good morning/ })).toBeVisible();
+  const onboarding = page.locator('.onboarding-modal');
+  if (await onboarding.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await page.getByRole('button', { name: 'Finish onboarding later' }).click();
+    await expect(onboarding).toBeHidden();
+  }
   await expect(page.locator('.brand:visible, .mobile-brand:visible').first()).toContainText('Forth');
 }
 
@@ -153,9 +158,16 @@ test('job import, scoring, approval, tailoring, and final PDF flow works', async
   const draftResume = page.locator('.job-row').filter({ hasText: title }).filter({ hasText: 'Tailored Resume' }).first();
   await expect(draftResume).toBeVisible({ timeout: 30_000 });
   await draftResume.click();
+  await expect(page.getByText('AI designed', { exact: false })).toBeVisible();
+  await expect(page.locator('.resume-paper')).toBeVisible();
+  await expect(page.locator('.resume-paper h1')).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('ai-designed-resume.png'), fullPage: true });
+  const directPdf = page.waitForEvent('download');
+  await page.getByRole('button', { name: /Download PDF/ }).click();
+  expect((await directPdf).suggestedFilename()).toMatch(/\.pdf$/);
   const approveResume = page.getByRole('button', { name: /Approve draft/ });
   await expect(approveResume).toBeVisible();
-  const resumeRisk = page.getByLabel(/I reviewed the unsupported claims above/).first();
+  const resumeRisk = page.getByLabel(/I reviewed the unsupported claims/).first();
   if (await resumeRisk.isVisible()) await resumeRisk.check();
   await approveResume.click();
   await expect(approveResume).toBeHidden();
@@ -165,7 +177,7 @@ test('job import, scoring, approval, tailoring, and final PDF flow works', async
   await coverSection.click();
   const approveLetter = page.getByRole('button', { name: /Approve cover letter/ });
   await expect(approveLetter).toBeVisible();
-  const letterRisk = page.getByLabel(/I reviewed the unsupported claims above/).first();
+  const letterRisk = page.getByLabel(/I reviewed the unsupported claims/).first();
   if (await letterRisk.isVisible()) await letterRisk.check();
   await approveLetter.click();
   await expect(approveLetter).toBeHidden();

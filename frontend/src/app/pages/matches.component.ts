@@ -200,7 +200,7 @@ export class MatchesComponent implements OnInit, OnDestroy {
   tailor(job: JobPosting): void {
     this.message = 'Generating tailored resume.';
     this.api.tailorResume(job.id).subscribe({
-      next: () => this.message = 'Tailored resume created. Open Resume Lab to review it.',
+      next: () => this.message = 'Your AI-designed resume is ready. Open Resume Studio to review it.',
       error: () => this.message = 'Resume tailoring failed.',
     });
   }

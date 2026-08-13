@@ -16,7 +16,7 @@ import { RealtimeService } from '../services/realtime.service';
           <h1>The system should know the whole story.</h1>
           <p class="page-intro">Build a truthful, living model of your experience, capabilities, goals, constraints, and preferences.</p>
         </div>
-        <button class="btn-secondary" type="button" (click)="load()">↻ Refresh</button>
+        <div class="action-row"><button class="btn-primary" type="button" *ngIf="profile && !profile.onboarding_completed_at" (click)="resumeOnboarding()">✦ Continue guided setup</button><button class="btn-secondary" type="button" (click)="load()">↻ Refresh</button></div>
       </div>
 
       <div class="summary-strip">
@@ -236,6 +236,11 @@ export class ProfileComponent implements OnInit, OnDestroy {
   }
 
   values(text: string): string[] { return text.split(',').map((value) => value.trim()).filter(Boolean); }
+
+  resumeOnboarding(): void {
+    sessionStorage.removeItem('forth_onboarding_dismissed');
+    window.location.reload();
+  }
 
   saveProfile(): void {
     if (!this.profile) return;

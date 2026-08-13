@@ -312,6 +312,9 @@ def tailor_resume(
     job_title: str,
     job_text: str,
     facts: list[dict[str, Any]],
+    candidate_name: str = '',
+    candidate_headline: str = '',
+    candidate_location: str = '',
 ) -> AIResult:
     facts_text = '\n'.join(f'- {fact.get("title")}: {fact.get("statement")}' for fact in facts[:80])
     schema = {
@@ -328,16 +331,36 @@ def tailor_resume(
                 'weak_claims': {'type': 'array', 'items': {'type': 'string'}},
                 'evidence_links': {'type': 'array', 'items': {'type': 'string'}},
                 'risk_notes': {'type': 'array', 'items': {'type': 'string'}},
+                'design': {
+                    'type': 'object',
+                    'additionalProperties': False,
+                    'properties': {
+                        'template': {'type': 'string', 'enum': ['modern', 'classic', 'minimal']},
+                        'density': {'type': 'string', 'enum': ['compact', 'balanced', 'spacious']},
+                        'accent': {'type': 'string', 'enum': ['#177d69', '#2f5f9f', '#6b4fa1', '#9a4d36', '#263b36']},
+                        'page_size': {'type': 'string', 'enum': ['Letter', 'A4']},
+                        'rationale': {'type': 'string'},
+                    },
+                    'required': ['template', 'density', 'accent', 'page_size', 'rationale'],
+                },
             },
             'required': [
                 'title', 'content_markdown', 'summary_changes', 'keyword_coverage',
-                'unsupported_claims', 'weak_claims', 'evidence_links', 'risk_notes',
+                'unsupported_claims', 'weak_claims', 'evidence_links', 'risk_notes', 'design',
             ],
         },
     }
     generated = generate_json(
-        'Tailor the resume only using the supplied canonical resume and evidence facts. Do not invent claims.',
         (
+            'Act as an expert resume strategist and editor. Produce a polished, ATS-safe, one-to-two-page resume in clean Markdown. '
+            'Use only the supplied canonical resume and evidence facts; never invent employers, dates, metrics, tools, scope, or credentials. '
+            'Preserve contact details and truthful chronology. Lead with a concise role-specific summary, prioritize the strongest relevant '
+            'achievements, use specific action-led bullets, weave in supported job language naturally, and remove repetition or generic filler. '
+            'Use # for the candidate name, ## for major sections, ### for roles or education entries, and - for achievement bullets. '
+            'Do not include commentary inside content_markdown.'
+        ),
+        (
+            f'Candidate name: {candidate_name}\nCandidate headline: {candidate_headline}\nCandidate location: {candidate_location}\n\n'
             f'Target job: {job_title}\n\nJob description:\n{job_text[:9000]}\n\n'
             f'Evidence facts:\n{facts_text[:9000]}\n\nCanonical resume:\n{canonical_markdown[:12000]}'
         ),
@@ -347,23 +370,57 @@ def tailor_resume(
         return generated
 
     job_skills = detect_skills(job_text)
-    resume = canonical_markdown.strip() or '# Resume\n\nAdd your canonical resume content first.'
-    inserted = ''
-    if job_skills:
-        inserted = '\n\n## Targeted Skills\n\n' + ', '.join(job_skills[:16])
-    content = f'{resume}{inserted}\n'
-    covered = [skill for skill in job_skills if re.search(re.escape(skill), resume, re.I)]
+    resume = canonical_markdown.strip()
+    identity = clean_text(candidate_name) or 'Candidate'
+    identity_line = ' · '.join(value for value in [clean_text(candidate_headline), clean_text(candidate_location)] if value)
+    has_name_heading = bool(re.search(r'(?m)^# ', resume))
+    header = '' if has_name_heading else f'# {identity}\n\n{identity_line}\n\n'
+    evidence_text = ' '.join(str(fact.get('statement', '')) for fact in facts)
+    supported_text = f'{resume} {evidence_text}'
+    covered = [skill for skill in job_skills if re.search(re.escape(skill), supported_text, re.I)]
+    ranked_facts = sorted(
+        facts,
+        key=lambda fact: (
+            sum(bool(re.search(re.escape(skill), f'{fact.get("title", "")} {fact.get("statement", "")}', re.I)) for skill in job_skills),
+            bool(fact.get('verified_by_user')),
+        ),
+        reverse=True,
+    )
+    highlights = [clean_text(fact.get('statement')) for fact in ranked_facts if clean_text(fact.get('statement'))][:4]
+    additions = []
+    if highlights:
+        additions.append('## Targeted Profile\n\n' + '\n'.join(f'- {statement}' for statement in highlights))
+    if covered:
+        additions.append('## Core Skills\n\n' + ' · '.join(covered[:16]))
+    if additions and has_name_heading:
+        first_section = re.search(r'(?m)^## ', resume)
+        if first_section:
+            content = f'{resume[:first_section.start()].rstrip()}\n\n' + '\n\n'.join(additions) + f'\n\n{resume[first_section.start():].lstrip()}\n'
+        else:
+            content = f'{resume}\n\n' + '\n\n'.join(additions) + '\n'
+    elif additions:
+        source_section = f'\n\n## Experience\n\n{resume}' if resume else ''
+        content = f'{header}{"\n\n".join(additions)}{source_section}\n'
+    else:
+        content = f'{header}{resume}\n'
     weak = [skill for skill in job_skills if skill not in covered][:8]
     return AIResult(
         data={
             'title': f'{job_title} Tailored Resume',
             'content_markdown': content,
-            'summary_changes': ['Added a targeted skills section based on the job description.'] if inserted else [],
+            'summary_changes': ['Prioritized supported evidence and role-relevant skills near the top of the resume.'] if additions else [],
             'keyword_coverage': covered,
             'unsupported_claims': [],
             'weak_claims': weak,
             'evidence_links': [str(fact.get('title')) for fact in facts[:12]],
-            'risk_notes': ['Heuristic draft: review carefully before applying.'],
+            'risk_notes': ['Evidence-ranked fallback draft: review ordering and voice before applying.'],
+            'design': {
+                'template': 'modern',
+                'density': 'balanced',
+                'accent': '#177d69',
+                'page_size': 'Letter',
+                'rationale': 'A restrained, ATS-safe layout that keeps evidence easy to scan.',
+            },
         },
         source='heuristic',
     )

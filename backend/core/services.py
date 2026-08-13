@@ -224,6 +224,7 @@ def create_tailored_resume(owner, *, job: JobPosting, canonical: Resume | None =
             content_json={},
         )
     facts = list(ProfileFact.objects.filter(owner=owner).order_by('-verified_by_user', 'fact_type', 'title')[:120])
+    profile = getattr(owner, 'candidate_profile', None)
     result = tailor_resume(
         canonical_markdown=canonical.content_markdown,
         job_title=job.title,
@@ -234,6 +235,9 @@ def create_tailored_resume(owner, *, job: JobPosting, canonical: Resume | None =
             'statement': fact.statement,
             'verified_by_user': fact.verified_by_user,
         } for fact in facts],
+        candidate_name=owner.get_full_name() or owner.get_username().replace('.', ' ').replace('_', ' ').title(),
+        candidate_headline=getattr(profile, 'headline', ''),
+        candidate_location=getattr(profile, 'location', ''),
     )
     validation = {
         'generator': result.source,
@@ -249,7 +253,13 @@ def create_tailored_resume(owner, *, job: JobPosting, canonical: Resume | None =
         kind='tailored',
         title=clean_text(result.data.get('title'))[:220] or f'{job.title} Tailored Resume',
         content_markdown=result.data.get('content_markdown', canonical.content_markdown),
-        content_json={'target_job_id': job.id},
+        content_json={
+            'target_job_id': job.id,
+            'design': result.data.get('design') or {
+                'template': 'modern', 'density': 'balanced', 'accent': '#177d69',
+                'page_size': 'Letter', 'rationale': 'A clean, ATS-safe presentation selected for this application.',
+            },
+        },
         parent_resume=canonical,
         target_job=job,
         validation=validation,

@@ -49,6 +49,8 @@ class CandidateProfile(models.Model):
     excluded_companies = models.JSONField(default=list, blank=True)
     completeness = models.PositiveSmallIntegerField(default=0)
     last_reviewed_at = models.DateTimeField(null=True, blank=True)
+    onboarding_state = models.JSONField(default=dict, blank=True)
+    onboarding_completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

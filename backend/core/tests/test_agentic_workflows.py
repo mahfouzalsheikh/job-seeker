@@ -3,7 +3,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from core.domain.documents import prepare_application_materials, render_application_bundle
+from core.domain.documents import document_html, prepare_application_materials, render_application_bundle
 from core.domain.matching import recompute_match
 from core.domain.orchestration import create_concierge_run, decide_approval, execute_agent_run
 from core.domain.sourcing import validate_public_url
@@ -127,6 +127,19 @@ class AgenticWorkflowTests(TestCase):
         self.assertTrue(all(artifact.file for artifact in artifacts))
         self.assertEqual(Artifact.objects.count(), 2)
 
+    def test_resume_design_is_stored_and_rendered_consistently(self):
+        application = Application.objects.create(owner=self.user, job=self.job, status='preparing')
+        materials = prepare_application_materials(self.user, self.job, application=application)
+        resume = materials['resume']
+        design = resume.content_json['design']
+
+        self.assertIn(design['template'], {'modern', 'classic', 'minimal'})
+        self.assertIn(design['density'], {'compact', 'balanced', 'spacious'})
+        rendered = document_html(resume.title, resume.content_markdown, kind='resume', design=design)
+        self.assertIn(f"size: {design['page_size']}", rendered)
+        self.assertIn(design['accent'], rendered)
+        self.assertIn('<h1>', rendered)
+
 
 class AgenticApiOwnershipTests(APITestCase):
     def setUp(self):
@@ -146,6 +159,54 @@ class AgenticApiOwnershipTests(APITestCase):
         response = self.client.patch('/api/profile/', {'target_roles': ['Platform Engineer']}, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['target_roles'], ['Platform Engineer'])
+
+    def test_onboarding_agent_adapts_and_builds_a_ready_profile(self):
+        response = self.client.get('/api/profile/onboarding/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['step']['id'], 'welcome')
+
+        def answer(step, answers=None):
+            result = self.client.post('/api/profile/onboarding/', {'step': step, 'answers': answers or {}}, format='json')
+            self.assertEqual(result.status_code, status.HTTP_200_OK, result.data)
+            return result
+
+        self.assertEqual(answer('welcome').data['step']['id'], 'source')
+        self.assertEqual(answer('source', {'skip': True}).data['step']['id'], 'direction')
+        self.assertEqual(answer('direction', {
+            'headline': 'Product-minded platform engineer',
+            'target_roles': ['Staff Platform Engineer'],
+            'target_industries': ['Developer tools'],
+        }).data['step']['id'], 'logistics')
+        self.assertEqual(answer('logistics', {
+            'location': 'Toronto, Canada',
+            'authorized_countries': ['Canada'],
+            'work_modes': ['remote', 'hybrid'],
+            'employment_types': ['full-time'],
+            'minimum_compensation': 150000,
+            'compensation_currency': 'CAD',
+        }).data['step']['id'], 'strengths')
+        self.assertEqual(answer('strengths', {
+            'skills': ['Python', 'Platform architecture'],
+            'capability': 'Builds dependable systems and helps teams make sound technical decisions.',
+        }).data['step']['id'], 'impact')
+        self.assertEqual(answer('impact', {
+            'title': 'Improved deployment recovery',
+            'story': 'Led a reliability program that reduced deployment recovery time by 40 percent across the platform.',
+        }).data['step']['id'], 'preferences')
+        self.assertEqual(answer('preferences', {
+            'ideal': ['High ownership', 'Calm collaboration'],
+            'avoid': ['Always-on culture'],
+        }).data['step']['id'], 'summary')
+        review = answer('summary', {
+            'professional_summary': 'Product-minded platform engineer who builds dependable systems and helps teams make clear technical decisions.',
+        })
+        self.assertEqual(review.data['step']['id'], 'review')
+        self.assertTrue(review.data['readiness']['ready'])
+        self.assertEqual(review.data['readiness']['score'], 100)
+
+        completed = answer('complete')
+        self.assertFalse(completed.data['needs_onboarding'])
+        self.assertIsNotNone(completed.data['profile']['onboarding_completed_at'])
 
     def test_foreign_approval_cannot_be_addressed(self):
         response = self.client.post(f'/api/approvals/{self.other_approval.id}/decide/', {'approved': True}, format='json')

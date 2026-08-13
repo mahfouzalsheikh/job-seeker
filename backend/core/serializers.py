@@ -82,9 +82,10 @@ class CandidateProfileSerializer(serializers.ModelSerializer):
             'id', 'headline', 'professional_summary', 'target_roles', 'target_industries',
             'location', 'authorized_countries', 'work_modes', 'employment_types',
             'minimum_compensation', 'compensation_currency', 'excluded_companies',
-            'completeness', 'last_reviewed_at', 'created_at', 'updated_at',
+            'completeness', 'last_reviewed_at', 'onboarding_state',
+            'onboarding_completed_at', 'created_at', 'updated_at',
         ]
-        read_only_fields = ['completeness', 'last_reviewed_at', 'created_at', 'updated_at']
+        read_only_fields = ['completeness', 'last_reviewed_at', 'onboarding_state', 'onboarding_completed_at', 'created_at', 'updated_at']
 
 
 class CandidatePreferenceSerializer(serializers.ModelSerializer):
@@ -211,7 +212,7 @@ class ResumeSerializer(OwnerScopedRelationsMixin, serializers.ModelSerializer):
             'parent_resume', 'target_job', 'target_job_title', 'validation',
             'approved', 'claims', 'created_at', 'updated_at',
         ]
-        read_only_fields = ['validation', 'claims', 'created_at', 'updated_at']
+        read_only_fields = ['validation', 'approved', 'claims', 'created_at', 'updated_at']
 
 
 class CoverLetterSerializer(OwnerScopedRelationsMixin, serializers.ModelSerializer):

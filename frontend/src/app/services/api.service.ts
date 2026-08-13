@@ -51,6 +51,18 @@ export interface CandidateProfile {
   compensation_currency: string;
   excluded_companies: string[];
   completeness: number;
+  onboarding_state: any;
+  onboarding_completed_at: string | null;
+}
+
+export interface OnboardingSnapshot {
+  needs_onboarding: boolean;
+  step: { id: string; title: string; prompt: string };
+  progress: number;
+  readiness: { score: number; ready: boolean; checks: Record<string, boolean>; missing: string[] };
+  stats: { documents: number; facts: number; skills: number; achievements: number; preferences: number };
+  suggested_summary: string;
+  profile: CandidateProfile;
 }
 
 export interface CandidatePreference {
@@ -239,6 +251,14 @@ export class ApiService {
     return this.http.patch<CandidateProfile>(`${environment.apiBaseUrl}/profile/`, payload);
   }
 
+  onboarding(): Observable<OnboardingSnapshot> {
+    return this.http.get<OnboardingSnapshot>(`${environment.apiBaseUrl}/profile/onboarding/`);
+  }
+
+  answerOnboarding(step: string, answers: Record<string, any> = {}): Observable<OnboardingSnapshot> {
+    return this.http.post<OnboardingSnapshot>(`${environment.apiBaseUrl}/profile/onboarding/`, { step, answers });
+  }
+
   preferences(): Observable<Paged<CandidatePreference>> {
     return this.http.get<Paged<CandidatePreference>>(`${environment.apiBaseUrl}/profile/preferences/`);
   }
@@ -333,6 +353,10 @@ export class ApiService {
 
   exportResumeMarkdown(id: number): Observable<Blob> {
     return this.http.get(`${environment.apiBaseUrl}/resumes/${id}/export_markdown/`, { responseType: 'blob' });
+  }
+
+  exportResumePdf(id: number): Observable<Blob> {
+    return this.http.post(`${environment.apiBaseUrl}/resumes/${id}/export_pdf/`, {}, { responseType: 'blob' });
   }
 
   applications(params: Record<string, string> = {}): Observable<Paged<ApplicationRecord>> {

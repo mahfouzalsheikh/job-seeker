@@ -4,11 +4,13 @@ import { NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router
 import { filter, Subscription } from 'rxjs';
 import { AuthService } from './services/auth.service';
 import { RealtimeService, RealtimeStatus } from './services/realtime.service';
+import { ApiService } from './services/api.service';
+import { OnboardingWizardComponent } from './onboarding/onboarding-wizard.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink],
+  imports: [CommonModule, RouterOutlet, RouterLink, OnboardingWizardComponent],
   template: `
     <div class="app-shell" *ngIf="auth.hasSession(); else authOnly">
       <header class="mobile-header">
@@ -66,6 +68,8 @@ import { RealtimeService, RealtimeStatus } from './services/realtime.service';
         <span class="spinner" aria-hidden="true"></span>
         <div><strong>{{ activeWork[0] }}</strong><small>{{ activeWork.length > 1 ? (activeWork.length - 1) + ' more background task' + (activeWork.length > 2 ? 's' : '') + ' running' : 'You can keep using Forth while this finishes.' }}</small></div>
       </div>
+
+      <app-onboarding-wizard *ngIf="showOnboarding" (closed)="showOnboarding = false"></app-onboarding-wizard>
     </div>
 
     <ng-template #authOnly>
@@ -79,6 +83,7 @@ export class AppComponent implements OnInit, OnDestroy {
   latestEvent = 'No events yet';
   navOpen = false;
   activeWork: string[] = [];
+  showOnboarding = false;
   private work = new Map<string, string>();
   private navSub?: Subscription;
   private authSub?: Subscription;
@@ -89,6 +94,7 @@ export class AppComponent implements OnInit, OnDestroy {
     public auth: AuthService,
     private router: Router,
     private realtime: RealtimeService,
+    private api: ApiService,
   ) {}
 
   ngOnInit(): void {
@@ -96,8 +102,10 @@ export class AppComponent implements OnInit, OnDestroy {
     this.authSub = this.auth.authed$.subscribe((authenticated) => {
       if (authenticated) {
         this.realtime.reconnect();
+        this.checkOnboarding();
       } else {
         this.realtime.disconnect();
+        this.showOnboarding = false;
       }
     });
     this.navSub = this.router.events.pipe(filter((event) => event instanceof NavigationEnd)).subscribe((event) => {
@@ -136,6 +144,14 @@ export class AppComponent implements OnInit, OnDestroy {
     this.auth.logout();
     this.realtime.disconnect();
     this.router.navigate(['/login']);
+  }
+
+  private checkOnboarding(): void {
+    if (sessionStorage.getItem('forth_onboarding_dismissed') === '1') return;
+    this.api.onboarding().subscribe({
+      next: (snapshot) => this.showOnboarding = snapshot.needs_onboarding,
+      error: () => this.showOnboarding = false,
+    });
   }
 
   private trackWork(event: any): void {
