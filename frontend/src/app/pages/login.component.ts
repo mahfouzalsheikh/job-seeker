@@ -10,11 +10,11 @@ import { AuthService } from '../services/auth.service';
   template: `
     <main class="auth-page">
       <section class="auth-story">
-        <div class="auth-brand"><span class="brand-mark">JS</span><strong>Job Search Studio</strong></div>
+        <div class="auth-brand"><span class="brand-mark">F</span><strong>Forth</strong></div>
         <div class="auth-story-copy">
-          <p class="eyebrow">A calmer way to job search</p>
-          <h1>Turn your experience into your next opportunity.</h1>
-          <p>Organize your career story, find stronger matches, and create focused application materials in one private workspace.</p>
+          <p class="eyebrow">Your career, moving forward</p>
+          <h1>Your next move, fully staffed.</h1>
+          <p>Forth organizes your career story, finds stronger matches, and helps you create focused applications in one private workspace.</p>
           <div class="auth-benefits">
             <div><span>✓</span><p><strong>Evidence-first profile</strong><small>Keep every claim grounded in your real experience.</small></p></div>
             <div><span>✓</span><p><strong>Clear fit signals</strong><small>Understand strengths and gaps before you apply.</small></p></div>
@@ -24,7 +24,7 @@ import { AuthService } from '../services/auth.service';
         <p class="auth-footnote">Private by design · Your data stays in your workspace</p>
       </section>
       <section class="auth-panel">
-        <div class="mobile-auth-brand"><span class="brand-mark">JS</span><strong>Job Search Studio</strong></div>
+        <div class="mobile-auth-brand"><span class="brand-mark">F</span><strong>Forth</strong></div>
         <p class="eyebrow">Welcome back</p>
         <h2>Sign in to your workspace</h2>
         <p class="auth-subtitle">Pick up where you left off.</p>

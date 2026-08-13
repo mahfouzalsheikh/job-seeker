@@ -7,7 +7,7 @@ import { AuthService } from './auth.service';
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
   const router = inject(Router);
-  const token = localStorage.getItem('job_search_studio_access') || '';
+  const token = localStorage.getItem('forth_access') || '';
   const isAuthRequest = req.url.includes('/auth/login/') || req.url.includes('/auth/refresh/');
   const recover = (error: any) => {
     if (error.status !== 401 || isAuthRequest || !auth.getRefreshToken()) {

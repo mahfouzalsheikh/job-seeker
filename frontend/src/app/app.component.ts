@@ -13,8 +13,8 @@ import { RealtimeService, RealtimeStatus } from './services/realtime.service';
     <div class="app-shell" *ngIf="auth.hasSession(); else authOnly">
       <header class="mobile-header">
         <a class="mobile-brand" routerLink="/dashboard" (click)="closeNav()">
-          <span class="brand-mark">JS</span>
-          <span>Job Search Studio</span>
+          <span class="brand-mark">F</span>
+          <span>Forth</span>
         </a>
         <button class="menu-toggle" type="button" (click)="navOpen = !navOpen" [attr.aria-expanded]="navOpen" aria-label="Toggle navigation">
           <span></span><span></span><span></span>
@@ -26,8 +26,8 @@ import { RealtimeService, RealtimeStatus } from './services/realtime.service';
       <aside class="side-nav" [class.open]="navOpen">
         <div class="side-nav-head">
           <a class="brand" routerLink="/dashboard" (click)="closeNav()">
-            <span class="brand-mark">JS</span>
-            <span class="brand-copy"><strong>Job Search</strong><small>Studio</small></span>
+            <span class="brand-mark">F</span>
+            <span class="brand-copy"><strong>Forth</strong><small>Career OS</small></span>
           </a>
           <button class="nav-close" type="button" (click)="closeNav()" aria-label="Close navigation">×</button>
         </div>
@@ -64,7 +64,7 @@ import { RealtimeService, RealtimeStatus } from './services/realtime.service';
 
       <div class="global-work" *ngIf="activeWork.length" role="status" aria-live="polite">
         <span class="spinner" aria-hidden="true"></span>
-        <div><strong>{{ activeWork[0] }}</strong><small>{{ activeWork.length > 1 ? (activeWork.length - 1) + ' more background task' + (activeWork.length > 2 ? 's' : '') + ' running' : 'You can keep using the studio while this finishes.' }}</small></div>
+        <div><strong>{{ activeWork[0] }}</strong><small>{{ activeWork.length > 1 ? (activeWork.length - 1) + ' more background task' + (activeWork.length > 2 ? 's' : '') + ' running' : 'You can keep using Forth while this finishes.' }}</small></div>
       </div>
     </div>
 

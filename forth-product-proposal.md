@@ -1,10 +1,10 @@
-# Job Search Studio Proposal
+# Forth Product Proposal
 
 Date: 2026-06-25
 
 ## Summary
 
-Job Search Studio is a private job-search workbench that uses one canonical resume plus unstructured personal context to find suitable jobs, rank fit, customize application materials, and track application outcomes.
+Forth is a private career operating system that uses one canonical resume plus unstructured personal context to find suitable jobs, rank fit, customize application materials, and track application outcomes.
 
 The application should follow the same technology direction as the sibling Drawing Algorithms project:
 
@@ -291,7 +291,7 @@ References:
 ```text
 backend/
   manage.py
-  jobsearch/
+  forth/
     settings.py
     urls.py
     asgi.py
@@ -562,7 +562,7 @@ The app should use a persistent side nav similar to Drawing Algorithms Studio.
 
 ```text
 +---------------------------+----------------------------------------------+
-| Job Search Studio         | Dashboard                                    |
+| Forth                     | Dashboard                                    |
 | o Realtime connected      |                                              |
 |                           | Today                                        |
 | Dashboard                 | +------------+ +------------+ +------------+ |
@@ -583,7 +583,7 @@ The app should use a persistent side nav similar to Drawing Algorithms Studio.
 
 ```text
 +---------------------------+----------------------------------------------+
-| Job Search Studio         | Profile Setup                                |
+| Forth                     | Profile Setup                                |
 |                           |                                              |
 | Dashboard                 | Step 1 of 4: Canonical Resume                |
 | Profile              *    | +------------------------------------------+ |
@@ -601,7 +601,7 @@ The app should use a persistent side nav similar to Drawing Algorithms Studio.
 
 ```text
 +---------------------------+----------------------------------------------+
-| Job Search Studio         | Profile Setup                                |
+| Forth                     | Profile Setup                                |
 |                           |                                              |
 | Profile              *    | Step 2 of 4: Add Context                     |
 |                           | +-------------------+ +--------------------+ |
@@ -623,7 +623,7 @@ The app should use a persistent side nav similar to Drawing Algorithms Studio.
 
 ```text
 +---------------------------+----------------------------------------------+
-| Job Search Studio         | Profile Facts                                |
+| Forth                     | Profile Facts                                |
 |                           |                                              |
 | Profile              *    | Filters: [All facts] [Needs review] [Skills] |
 |                           |                                              |
@@ -646,7 +646,7 @@ The app should use a persistent side nav similar to Drawing Algorithms Studio.
 
 ```text
 +---------------------------+----------------------------------------------+
-| Job Search Studio         | Sources                                      |
+| Forth                     | Sources                                      |
 |                           |                                              |
 | Sources              *    | +----------------+ +-----------------------+ |
 |                           | | Manual Import  | | Company Monitor       | |
@@ -669,7 +669,7 @@ The app should use a persistent side nav similar to Drawing Algorithms Studio.
 
 ```text
 +---------------------------+----------------------------------------------+
-| Job Search Studio         | Import Job                                   |
+| Forth                     | Import Job                                   |
 |                           |                                              |
 | Sources              *    | +------------------------------------------+ |
 |                           | | Source URL                                | |
@@ -700,7 +700,7 @@ The app should use a persistent side nav similar to Drawing Algorithms Studio.
 
 ```text
 +---------------------------+----------------------------------------------+
-| Job Search Studio         | Matches                                      |
+| Forth                     | Matches                                      |
 |                           |                                              |
 | Matches              *    | Filters                                      |
 |                           | [Remote] [Backend] [Score >= 75] [New only] |
@@ -735,7 +735,7 @@ The app should use a persistent side nav similar to Drawing Algorithms Studio.
 
 ```text
 +---------------------------+----------------------------------------------+
-| Job Search Studio         | Resume Lab                                   |
+| Forth                     | Resume Lab                                   |
 |                           |                                              |
 | Resume Lab           *    | Target Job: Senior Backend Engineer, Acme    |
 |                           |                                              |
@@ -762,7 +762,7 @@ The app should use a persistent side nav similar to Drawing Algorithms Studio.
 
 ```text
 +---------------------------+----------------------------------------------+
-| Job Search Studio         | Resume Draft Review                          |
+| Forth                     | Resume Draft Review                          |
 |                           |                                              |
 | Resume Lab           *    | +----------------------+-------------------+ |
 |                           | | Canonical Resume     | Tailored Draft    | |
@@ -789,7 +789,7 @@ The app should use a persistent side nav similar to Drawing Algorithms Studio.
 
 ```text
 +---------------------------+----------------------------------------------+
-| Job Search Studio         | Pipeline                                     |
+| Forth                     | Pipeline                                     |
 |                           |                                              |
 | Pipeline             *    | +------------+------------+------------+---+ |
 |                           | | Saved      | Resume     | Applied    |   | |
@@ -810,7 +810,7 @@ The app should use a persistent side nav similar to Drawing Algorithms Studio.
 
 ```text
 +---------------------------+----------------------------------------------+
-| Job Search Studio         | Application Detail                           |
+| Forth                     | Application Detail                           |
 |                           |                                              |
 | Pipeline             *    | Senior Backend Engineer, Acme                |
 |                           | Status: Applied                              |
@@ -836,7 +836,7 @@ The app should use a persistent side nav similar to Drawing Algorithms Studio.
 
 ```text
 +---------------------------+----------------------------------------------+
-| Job Search Studio         | Strategy                                     |
+| Forth                     | Strategy                                     |
 |                           |                                              |
 | Strategy             *    | Search Health                                |
 |                           | +------------+------------+----------------+ |
@@ -1134,4 +1134,3 @@ Upload resume
 ```
 
 After that loop works, add scheduled sources and broader automation.
-

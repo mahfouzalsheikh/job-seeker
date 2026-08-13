@@ -1,4 +1,4 @@
-# Job Search Studio — Agentic Refactor Plan
+# Forth — Agentic Refactor Plan
 
 Status: accepted for implementation  
 Date: 2026-08-13
@@ -56,7 +56,7 @@ Deliver a private, evidence-first job-search operating system that:
 ### Agent runtime and conversation
 
 - Add `ConversationThread`, `ConversationMessage`, `AgentRun`, `AgentStep`, and `ApprovalRequest`.
-- Implement specialist workflows: Profile Steward, Sourcing Scout, Match Analyst, Application Coach, Document Tailor, and Search Concierge.
+- Implement specialist workflows: Profile Steward, Sourcing Scout, Match Analyst, Application Coach, Document Tailor, and Forth Concierge.
 - Keep every run bounded, owner-scoped, idempotent, observable, and interruptible.
 
 ## Experience migration

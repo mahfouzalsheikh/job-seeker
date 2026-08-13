@@ -50,7 +50,7 @@ class SourceConnector:
 
     def get_json(self, url: str) -> Any:
         validate_public_url(url)
-        response = requests.get(url, timeout=self.timeout, headers={'User-Agent': 'JobSearchStudio/1.0'})
+        response = requests.get(url, timeout=self.timeout, headers={'User-Agent': 'Forth/1.0'})
         response.raise_for_status()
         return response.json()
 
@@ -128,7 +128,7 @@ class RSSConnector(SourceConnector):
         if not url:
             raise ValueError('RSS sources require config.url.')
         validate_public_url(url)
-        response = requests.get(url, timeout=self.timeout, headers={'User-Agent': 'JobSearchStudio/1.0'})
+        response = requests.get(url, timeout=self.timeout, headers={'User-Agent': 'Forth/1.0'})
         response.raise_for_status()
         root = ElementTree.fromstring(response.content)
         records = []

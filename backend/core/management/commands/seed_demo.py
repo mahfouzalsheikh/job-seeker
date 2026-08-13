@@ -30,7 +30,7 @@ DEMO_META = {'demo': True}
 
 
 class Command(BaseCommand):
-    help = 'Seed demo data for Job Search Studio without making OpenAI API calls.'
+    help = 'Seed demo data for Forth without making OpenAI API calls.'
 
     def add_arguments(self, parser):
         parser.add_argument('--username', default='admin')
@@ -487,7 +487,7 @@ Senior backend engineer positioned for {job.title} at {job.company}, emphasizing
 
     def create_concierge(self, user) -> None:
         thread = ConversationThread.objects.create(
-            owner=user, title='Job search concierge', context=DEMO_META,
+            owner=user, title='Forth concierge', context=DEMO_META,
         )
         ConversationMessage.objects.create(
             owner=user,

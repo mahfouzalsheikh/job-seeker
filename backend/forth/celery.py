@@ -2,9 +2,8 @@ import os
 
 from celery import Celery
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'jobsearch.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'forth.settings')
 
-app = Celery('jobsearch')
+app = Celery('forth')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 app.autodiscover_tasks()
-

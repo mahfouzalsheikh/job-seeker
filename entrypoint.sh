@@ -22,9 +22,9 @@ if not User.objects.filter(username=username).exists():
 fi
 
 if [[ "$APP_ROLE" == "worker" ]]; then
-  exec celery -A jobsearch worker -l info -Q "${CELERY_WORKER_QUEUES:-celery}" --concurrency="${CELERY_WORKER_CONCURRENCY:-2}"
+  exec celery -A forth worker -l info -Q "${CELERY_WORKER_QUEUES:-celery}" --concurrency="${CELERY_WORKER_CONCURRENCY:-2}"
 elif [[ "$APP_ROLE" == "beat" ]]; then
-  exec celery -A jobsearch beat -l info
+  exec celery -A forth beat -l info
 else
-  exec daphne -b 0.0.0.0 -p 8000 jobsearch.asgi:application
+  exec daphne -b 0.0.0.0 -p 8000 forth.asgi:application
 fi

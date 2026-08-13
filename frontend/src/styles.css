@@ -1963,7 +1963,7 @@ a.metric:hover {
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 50%;
-  animation: studio-spin .72s linear infinite;
+  animation: forth-spin .72s linear infinite;
 }
 
 .global-work {
@@ -2013,7 +2013,7 @@ a.metric:hover {
 
 .risk-accept input { flex: 0 0 auto; margin-top: 2px; }
 
-@keyframes studio-spin { to { transform: rotate(360deg); } }
+@keyframes forth-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 960px) {
   .global-work { bottom: 16px; }

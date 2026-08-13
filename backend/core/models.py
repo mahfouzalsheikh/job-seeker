@@ -490,7 +490,7 @@ class Artifact(OwnedModel):
 
 
 class ConversationThread(OwnedModel):
-    title = models.CharField(max_length=220, default='Job search concierge')
+    title = models.CharField(max_length=220, default='Forth concierge')
     status = models.CharField(max_length=24, default='active', db_index=True)
     context = models.JSONField(default=dict, blank=True)
 
@@ -518,7 +518,7 @@ class ConversationMessage(OwnedModel):
 
 class AgentRun(OwnedModel):
     AGENT_CHOICES = [
-        ('concierge', 'Search Concierge'),
+        ('concierge', 'Forth Concierge'),
         ('profile', 'Profile Steward'),
         ('sourcing', 'Sourcing Scout'),
         ('matching', 'Match Analyst'),

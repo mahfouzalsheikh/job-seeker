@@ -10,8 +10,8 @@ interface TokenResponse {
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private readonly accessKey = 'job_search_studio_access';
-  private readonly refreshKey = 'job_search_studio_refresh';
+  private readonly accessKey = 'forth_access';
+  private readonly refreshKey = 'forth_refresh';
   private readonly authedSubject = new BehaviorSubject<boolean>(this.hasSession());
   private refreshRequest$?: Observable<{ access: string }>;
   authed$ = this.authedSubject.asObservable();

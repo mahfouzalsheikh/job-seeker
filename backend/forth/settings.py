@@ -5,7 +5,7 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-job-seeker-secret-key')
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-forth-secret-key')
 DEBUG = os.environ.get('DJANGO_DEBUG', '1').lower() in {'1', 'true', 'yes', 'on'}
 ALLOWED_HOSTS = [host.strip() for host in os.environ.get('DJANGO_ALLOWED_HOSTS', '*').split(',') if host.strip()]
 CSRF_TRUSTED_ORIGINS = [
@@ -40,9 +40,9 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'jobsearch.urls'
-ASGI_APPLICATION = 'jobsearch.asgi.application'
-WSGI_APPLICATION = 'jobsearch.wsgi.application'
+ROOT_URLCONF = 'forth.urls'
+ASGI_APPLICATION = 'forth.asgi.application'
+WSGI_APPLICATION = 'forth.wsgi.application'
 
 TEMPLATES = [
     {

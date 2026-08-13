@@ -60,7 +60,7 @@ import { RealtimeService } from '../services/realtime.service';
         <div class="panel-head">
           <div>
             <h2>Career evidence</h2>
-            <p>Review extracted details and verify anything you want the studio to prioritize.</p>
+            <p>Review extracted details and verify anything you want Forth to prioritize.</p>
           </div>
           <div class="search-field"><span>⌕</span><input class="compact-input" aria-label="Search facts" placeholder="Search facts" [(ngModel)]="factSearch" (input)="loadFacts()"></div>
         </div>
@@ -122,7 +122,7 @@ import { RealtimeService } from '../services/realtime.service';
         <div class="empty-state" *ngIf="!facts.length">
           <span class="empty-icon">◎</span>
           <h3>No profile facts yet</h3>
-          <p>Add source material and the studio will extract reusable career evidence.</p>
+          <p>Add source material and Forth will extract reusable career evidence.</p>
           <button class="btn-primary" type="button" (click)="activeTab = 'sources'">Add source material</button>
         </div>
       </section>

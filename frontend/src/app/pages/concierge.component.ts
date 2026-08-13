@@ -13,7 +13,7 @@ import { RealtimeService } from '../services/realtime.service';
     <section class="page concierge-page">
       <div class="page-head concierge-head">
         <div>
-          <p class="eyebrow">Search concierge</p>
+          <p class="eyebrow">Forth concierge</p>
           <h1>Your job search has a chief of staff.</h1>
           <p class="page-intro">Ask for clarity, delegate research, and approve consequential work in one place.</p>
         </div>
@@ -23,12 +23,12 @@ import { RealtimeService } from '../services/realtime.service';
       <div class="concierge-layout">
         <section class="conversation-panel">
           <div class="conversation-toolbar">
-            <div><strong>Search Concierge</strong><small>Answers use your profile, matches, and pipeline</small></div>
+            <div><strong>Forth Concierge</strong><small>Answers use your profile, matches, and pipeline</small></div>
             <button type="button" class="new-chat" (click)="newConversation()" [disabled]="sending || startingConversation">{{ startingConversation ? 'Starting…' : '+ New conversation' }}</button>
           </div>
           <div class="conversation-stream" #stream aria-live="polite">
             <div class="concierge-welcome" *ngIf="!thread?.messages?.length">
-              <span class="concierge-orb">JS</span>
+              <span class="concierge-orb">F</span>
               <h2>What would move your search forward today?</h2>
               <p>I can review your profile, refresh sources, explain matches, prepare materials, or surface the next pipeline action.</p>
               <div class="prompt-grid">
@@ -37,7 +37,7 @@ import { RealtimeService } from '../services/realtime.service';
             </div>
 
             <article class="chat-message" *ngFor="let message of thread?.messages" [class.user-message]="message.role === 'user'">
-              <span class="chat-avatar">{{ message.role === 'user' ? 'You' : 'JS' }}</span>
+              <span class="chat-avatar">{{ message.role === 'user' ? 'You' : 'F' }}</span>
               <div class="message-bubble">
                 <small>{{ message.role === 'user' ? 'You' : agentName(message.metadata?.agent) }} <span>· {{ message.created_at | date:'shortTime' }}</span></small>
                 <p class="message-copy">{{ message.content }}</p>
@@ -49,12 +49,12 @@ import { RealtimeService } from '../services/realtime.service';
                 </div>
               </div>
             </article>
-            <article class="chat-message thinking" *ngIf="sending" role="status"><span class="chat-avatar">JS</span><div class="message-bubble"><small>{{ workingAgent }} is working</small><p><i></i><i></i><i></i><span>Reviewing your workspace…</span></p></div></article>
+            <article class="chat-message thinking" *ngIf="sending" role="status"><span class="chat-avatar">F</span><div class="message-bubble"><small>{{ workingAgent }} is working</small><p><i></i><i></i><i></i><span>Reviewing your workspace…</span></p></div></article>
           </div>
 
           <form class="composer" (ngSubmit)="send(draft)">
             <div class="composer-error" *ngIf="chatError" role="alert">{{ chatError }}</div>
-            <textarea [(ngModel)]="draft" name="draft" rows="2" aria-label="Message Search Concierge" placeholder="Ask about your profile, opportunities, applications, or materials…" [disabled]="startingConversation" (keydown.control.enter)="$event.preventDefault(); send(draft)"></textarea>
+            <textarea [(ngModel)]="draft" name="draft" rows="2" aria-label="Message Forth Concierge" placeholder="Ask about your profile, opportunities, applications, or materials…" [disabled]="startingConversation" (keydown.control.enter)="$event.preventDefault(); send(draft)"></textarea>
             <div><span>Ctrl + Enter to send</span><button class="btn-primary" type="submit" [disabled]="!draft.trim() || sending || startingConversation">{{ sending ? 'Working…' : 'Send →' }}</button></div>
           </form>
         </section>
@@ -85,7 +85,7 @@ export class ConciergeComponent implements OnInit, OnDestroy {
   draft = '';
   sending = false;
   startingConversation = false;
-  workingAgent = 'Search Concierge';
+  workingAgent = 'Forth Concierge';
   chatError = '';
   decidingApprovalId: number | null = null;
   private eventSub?: Subscription;
@@ -103,7 +103,7 @@ export class ConciergeComponent implements OnInit, OnDestroy {
     { initial: 'M', name: 'Match Analyst', role: 'Fit & gaps', color: '#a991ff' },
     { initial: 'A', name: 'Application Coach', role: 'Pipeline & follow-ups', color: '#f0bd45' },
     { initial: 'D', name: 'Document Tailor', role: 'Application materials', color: '#ff8a70' },
-    { initial: 'C', name: 'Search Concierge', role: 'Intent & decisions', color: '#fffdf8' },
+    { initial: 'F', name: 'Forth Concierge', role: 'Intent & decisions', color: '#fffdf8' },
   ];
 
   constructor(private api: ApiService, private realtime: RealtimeService) {}
@@ -139,7 +139,7 @@ export class ConciergeComponent implements OnInit, OnDestroy {
     if (!value || !this.thread || this.sending || this.startingConversation) return;
     this.sending = true;
     this.chatError = '';
-    this.workingAgent = 'Search Concierge';
+    this.workingAgent = 'Forth Concierge';
     this.draft = '';
     this.scrollToLatest();
     this.api.sendMessage(this.thread.id, value, jobId ? { job_id: jobId } : {}).subscribe({
@@ -235,7 +235,7 @@ export class ConciergeComponent implements OnInit, OnDestroy {
   }
 
   agentName(agent?: string): string {
-    const names: Record<string, string> = { profile: 'Profile Steward', sourcing: 'Sourcing Scout', matching: 'Match Analyst', application: 'Application Coach', documents: 'Document Tailor', concierge: 'Search Concierge' };
-    return names[agent || ''] || 'Search Concierge';
+    const names: Record<string, string> = { profile: 'Profile Steward', sourcing: 'Sourcing Scout', matching: 'Match Analyst', application: 'Application Coach', documents: 'Document Tailor', concierge: 'Forth Concierge' };
+    return names[agent || ''] || 'Forth Concierge';
   }
 }

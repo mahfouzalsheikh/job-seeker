@@ -3,7 +3,7 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
-    "job-search-studio-web": {
+    "forth-web": {
       "projectType": "application",
       "schematics": {},
       "root": "",
@@ -13,14 +13,14 @@
         "build": {
           "builder": "@angular/build:application",
           "options": {
-            "outputPath": "dist/job-search-studio-web",
+            "outputPath": "dist/forth-web",
             "index": "src/index.html",
             "browser": "src/main.ts",
             "polyfills": ["zone.js"],
             "tsConfig": "tsconfig.app.json",
             "assets": [
               {
-                "glob": "job-search-studio-user-guide.html",
+                "glob": "forth-user-guide.html",
                 "input": "src",
                 "output": "/"
               }
@@ -51,10 +51,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "job-search-studio-web:build:production"
+              "buildTarget": "forth-web:build:production"
             },
             "development": {
-              "buildTarget": "job-search-studio-web:build:development"
+              "buildTarget": "forth-web:build:development"
             }
           },
           "defaultConfiguration": "development"

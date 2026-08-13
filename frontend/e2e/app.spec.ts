@@ -15,11 +15,14 @@ const routes = [
 
 async function login(page: Page): Promise<void> {
   await page.goto('/login');
+  await expect(page).toHaveTitle(/Forth/);
+  await expect(page.locator('.auth-brand:visible, .mobile-auth-brand:visible')).toContainText('Forth');
   await page.getByLabel('Username').fill('admin');
   await page.getByLabel('Password').fill('adminpass');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole('heading', { name: /Good morning/ })).toBeVisible();
+  await expect(page.locator('.brand:visible, .mobile-brand:visible').first()).toContainText('Forth');
 }
 
 async function assertHealthyLayout(page: Page): Promise<void> {

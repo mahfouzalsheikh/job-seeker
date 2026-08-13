@@ -21,7 +21,7 @@ RUN pip install --no-cache-dir pipenv \
     && pipenv install --system --skip-lock
 
 COPY backend ./backend
-COPY --from=frontend-build /app/frontend/dist/job-search-studio-web/browser /app/backend/staticfiles
+COPY --from=frontend-build /app/frontend/dist/forth-web/browser /app/backend/staticfiles
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

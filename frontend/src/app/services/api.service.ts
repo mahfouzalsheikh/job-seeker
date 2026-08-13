@@ -369,7 +369,7 @@ export class ApiService {
   }
 
   createConversation(): Observable<ConversationThread> {
-    return this.http.post<ConversationThread>(`${environment.apiBaseUrl}/conversations/`, { title: 'Job search concierge', status: 'active', context: {} });
+    return this.http.post<ConversationThread>(`${environment.apiBaseUrl}/conversations/`, { title: 'Forth concierge', status: 'active', context: {} });
   }
 
   conversation(id: number): Observable<ConversationThread> {

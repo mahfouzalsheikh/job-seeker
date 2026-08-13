@@ -32,7 +32,7 @@ import { ApiService, CoverLetter, JobPosting, Resume } from '../services/api.ser
       </section>
 
       <section class="panel focused-form" *ngIf="activeTab === 'tailor'">
-        <div class="generation-hero"><span class="generation-icon">✦</span><div><h2>Generate a tailored draft</h2><p>Select a target role. The studio uses your canonical resume and verified evidence to produce a focused version.</p></div></div>
+        <div class="generation-hero"><span class="generation-icon">✦</span><div><h2>Generate a tailored draft</h2><p>Select a target role. Forth uses your canonical resume and verified evidence to produce a focused version.</p></div></div>
         <label>Target opportunity<select [(ngModel)]="targetJobId" name="targetJobId"><option [ngValue]="null">Choose a job from your matches</option><option *ngFor="let job of jobs" [ngValue]="job.id">{{ job.title }} · {{ job.company }}</option></select></label>
         <div class="action-row form-actions"><button class="btn-primary" type="button" (click)="tailor()" [disabled]="!targetJobId || generating">{{ generating ? 'Generating…' : 'Generate tailored draft' }}</button><button class="btn-secondary" type="button" (click)="activeTab = 'library'" [disabled]="generating">Cancel</button></div>
       </section>

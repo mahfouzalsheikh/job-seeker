@@ -32,7 +32,7 @@ def default_thread(owner) -> ConversationThread:
     thread = ConversationThread.objects.filter(owner=owner, status='active').first()
     if thread:
         return thread
-    return ConversationThread.objects.create(owner=owner, title='Job search concierge')
+    return ConversationThread.objects.create(owner=owner, title='Forth concierge')
 
 
 def _classify(message: str, *, previous_agent: str = '') -> dict[str, str]:

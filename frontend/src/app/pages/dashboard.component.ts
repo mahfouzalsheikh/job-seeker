@@ -57,5 +57,5 @@ export class DashboardComponent implements OnInit {
   todayLabel = new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(new Date());
   constructor(private api: ApiService) {}
   ngOnInit(): void { this.api.today().subscribe((data) => this.data = data); }
-  initials(company: string): string { return (company || 'JS').split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase(); }
+  initials(company: string): string { return (company || 'F').split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase(); }
 }

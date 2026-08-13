@@ -1,6 +1,6 @@
-# Job Search Studio
+# Forth
 
-Private, agentic job-search operating system for candidate intelligence, compliant sourcing, explainable matching, application operations, and evidence-backed materials.
+Your next move, fully staffed. Forth is a private, agentic career operating system for candidate intelligence, compliant sourcing, explainable matching, application operations, and evidence-backed materials.
 
 The stack intentionally follows the sibling Drawing Algorithms project:
 
@@ -29,7 +29,7 @@ The stack intentionally follows the sibling Drawing Algorithms project:
 - Maintain a living search brief with target roles, industries, authorization, work modes, compensation, and explicit preference strength.
 - Run Greenhouse, Lever, Ashby, and RSS discovery connectors with durable source-run history.
 - Review decomposed fit signals separately from hard eligibility gates.
-- Collaborate with six bounded specialist workflows through the Search Concierge.
+- Collaborate with six bounded specialist workflows through the Forth Concierge.
 - Approve consequential actions through a durable human-in-the-loop queue.
 - Generate both resumes and cover letters, validate claims, and render final PDFs through Gotenberg.
 - View strategy recommendations based on matches, profile quality, and application history.
@@ -48,7 +48,7 @@ Candidate evidence + explicit preferences
   -> tracked application, follow-up, interview, and outcome
 ```
 
-The specialist roles are Profile Steward, Sourcing Scout, Match Analyst, Application Coach, Document Tailor, and Search Concierge. They are durable workflows over typed Django domain operations—not independent services with private state.
+The specialist roles are Profile Steward, Sourcing Scout, Match Analyst, Application Coach, Document Tailor, and Forth Concierge. They are durable workflows over typed Django domain operations—not independent services with private state.
 
 ## Local Docker Run
 
@@ -139,8 +139,8 @@ Document Studio
 ## User Guide
 
 The standalone, responsive guide is available in the running app at
-`/job-search-studio-user-guide.html` and in the repository at
-[`frontend/src/job-search-studio-user-guide.html`](frontend/src/job-search-studio-user-guide.html).
+`/forth-user-guide.html` and in the repository at
+[`frontend/src/forth-user-guide.html`](frontend/src/forth-user-guide.html).
 
 ## Quality Checks
 
