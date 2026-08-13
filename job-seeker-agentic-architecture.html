@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Agentic architecture proposal for Job Search Studio">
+  <title>Job Search, Orchestrated — Architecture Proposal</title>
+  <style>
+    :root {
+      --ink: #13231f;
+      --ink-2: #29443c;
+      --paper: #f6f2e8;
+      --paper-2: #ebe5d7;
+      --white: #fffdf8;
+      --lime: #c8f45a;
+      --cyan: #78e5dc;
+      --coral: #ff795f;
+      --violet: #a991ff;
+      --gold: #f0bd45;
+      --muted: #6d776f;
+      --line: rgba(19, 35, 31, .16);
+      --shadow: 0 24px 70px rgba(19, 35, 31, .12);
+      --radius: 22px;
+      --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-snap-type: y mandatory; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #ded8ca;
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.45;
+      overflow-x: hidden;
+    }
+    button, a { font: inherit; }
+    a { color: inherit; }
+    svg { display: block; }
+
+    .slide {
+      position: relative;
+      min-height: 100vh;
+      min-height: 100svh;
+      padding: clamp(58px, 6.5vw, 104px) clamp(28px, 6.5vw, 112px) clamp(70px, 6vw, 92px);
+      background:
+        radial-gradient(circle at 92% 2%, rgba(120, 229, 220, .18), transparent 25%),
+        var(--paper);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      scroll-snap-align: start;
+      overflow: hidden;
+      isolation: isolate;
+    }
+    .slide::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+      pointer-events: none;
+      opacity: .23;
+      background-image: linear-gradient(rgba(19,35,31,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(19,35,31,.08) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: linear-gradient(to bottom, transparent, #000 30%, #000 80%, transparent);
+    }
+    .slide.dark {
+      color: var(--paper);
+      background:
+        radial-gradient(circle at 84% 10%, rgba(120, 229, 220, .12), transparent 30%),
+        radial-gradient(circle at 12% 80%, rgba(169, 145, 255, .1), transparent 28%),
+        var(--ink);
+    }
+    .slide.dark::before { opacity: .1; background-image: linear-gradient(rgba(255,255,255,.16) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.16) 1px, transparent 1px); }
+    .slide.coral {
+      background: var(--coral);
+      color: #17231f;
+    }
+    .slide.coral::before { opacity: .12; }
+
+    .topline {
+      position: absolute;
+      top: 26px;
+      left: clamp(28px, 6.5vw, 112px);
+      right: clamp(28px, 6.5vw, 112px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      opacity: .67;
+    }
+    .brand-dot { display: inline-block; width: 9px; height: 9px; margin-right: 9px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 0 4px rgba(200,244,90,.16); }
+    .slide-no { font-variant-numeric: tabular-nums; }
+    .kicker {
+      margin: 0 0 16px;
+      color: var(--ink-2);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    .dark .kicker { color: var(--cyan); }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      max-width: 980px;
+      margin-bottom: 24px;
+      font-size: clamp(58px, 8.7vw, 136px);
+      line-height: .86;
+      letter-spacing: -.075em;
+      font-weight: 760;
+    }
+    h2 {
+      max-width: 1040px;
+      margin-bottom: clamp(24px, 3vw, 46px);
+      font-size: clamp(38px, 5.2vw, 76px);
+      line-height: .98;
+      letter-spacing: -.055em;
+      font-weight: 740;
+    }
+    h3 { margin-bottom: 9px; font-size: 19px; line-height: 1.15; letter-spacing: -.02em; }
+    .lede { max-width: 790px; margin-bottom: 0; color: var(--ink-2); font-size: clamp(18px, 1.65vw, 25px); line-height: 1.45; }
+    .dark .lede { color: rgba(246,242,232,.72); }
+    .muted { color: var(--muted); }
+    .dark .muted { color: rgba(246,242,232,.57); }
+    .accent { color: #346c60; }
+    .dark .accent { color: var(--lime); }
+    .marker { display: inline; background: linear-gradient(transparent 66%, var(--lime) 66%); }
+    .dark .marker { color: var(--ink); background: var(--lime); box-decoration-break: clone; -webkit-box-decoration-break: clone; padding: 0 .08em; }
+    .mono { font-family: var(--mono); }
+    .micro { font-size: 12px; line-height: 1.4; }
+    .big-number { font-size: clamp(48px, 6vw, 90px); line-height: .9; letter-spacing: -.06em; font-weight: 800; }
+
+    .grid { display: grid; gap: 18px; }
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .split { display: grid; grid-template-columns: minmax(0, .9fr) minmax(460px, 1.1fr); align-items: center; gap: clamp(34px, 6vw, 100px); }
+    .split.wide-left { grid-template-columns: minmax(560px, 1.2fr) minmax(0, .8fr); }
+    .stack { display: grid; gap: 14px; }
+    .card {
+      position: relative;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255,253,248,.72);
+      box-shadow: 0 10px 30px rgba(19,35,31,.04);
+      overflow: hidden;
+    }
+    .dark .card { border-color: rgba(246,242,232,.15); background: rgba(255,255,255,.055); box-shadow: none; }
+    .card p:last-child { margin-bottom: 0; }
+    .card-num { display: block; margin-bottom: 20px; font-family: var(--mono); color: #46786d; font-size: 11px; font-weight: 800; letter-spacing: .12em; }
+    .dark .card-num { color: var(--cyan); }
+    .tag, .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 26px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--paper-2);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .tag.lime, .status.keep { background: var(--lime); color: var(--ink); }
+    .tag.cyan, .status.extend { background: var(--cyan); color: var(--ink); }
+    .tag.coral, .status.build { background: var(--coral); color: var(--ink); }
+    .tag.violet { background: var(--violet); color: var(--ink); }
+    .dark .tag:not(.lime):not(.cyan):not(.coral):not(.violet) { background: rgba(255,255,255,.1); }
+    .icon {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      flex: 0 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--white);
+      font-family: var(--mono);
+      font-weight: 900;
+    }
+    .dark .icon { border-color: rgba(255,255,255,.16); background: rgba(255,255,255,.07); }
+    .icon.lime { background: var(--lime); }
+    .icon.cyan { background: var(--cyan); }
+    .icon.coral { background: var(--coral); }
+    .icon.violet { background: var(--violet); }
+
+    .hero-art {
+      position: absolute;
+      right: -5vw;
+      bottom: -10vh;
+      width: min(48vw, 700px);
+      aspect-ratio: 1;
+      border: clamp(30px, 4.5vw, 78px) solid var(--lime);
+      border-radius: 50%;
+      opacity: .94;
+    }
+    .hero-art::before, .hero-art::after { content: ""; position: absolute; border-radius: 50%; }
+    .hero-art::before { inset: 13%; border: clamp(18px, 3vw, 48px) solid var(--cyan); }
+    .hero-art::after { inset: 32%; background: var(--coral); box-shadow: 0 0 0 clamp(16px,2vw,32px) var(--ink); }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 38px; }
+
+    .north-star {
+      display: grid;
+      grid-template-columns: 1fr 70px 1fr 70px 1fr;
+      align-items: stretch;
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .north-star .card { min-height: 250px; display: flex; flex-direction: column; justify-content: space-between; }
+    .north-star .card strong { display: block; max-width: 260px; font-size: clamp(26px, 2.7vw, 42px); line-height: 1.02; letter-spacing: -.045em; }
+    .arrow { display: grid; place-items: center; font-size: 34px; color: #528478; }
+
+    .chat-shell {
+      max-width: 610px;
+      margin-left: auto;
+      padding: 18px;
+      border: 1px solid rgba(246,242,232,.16);
+      border-radius: 28px;
+      background: rgba(255,255,255,.055);
+      box-shadow: 0 30px 80px rgba(0,0,0,.24);
+    }
+    .chat-head { display: flex; align-items: center; gap: 11px; padding: 2px 4px 15px; border-bottom: 1px solid rgba(255,255,255,.1); }
+    .agent-pulse { width: 11px; height: 11px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 0 6px rgba(200,244,90,.1); }
+    .message { max-width: 88%; margin-top: 14px; padding: 14px 16px; border-radius: 16px; font-size: 14px; line-height: 1.45; }
+    .message.agent { background: rgba(255,255,255,.09); border-bottom-left-radius: 4px; }
+    .message.user { margin-left: auto; color: var(--ink); background: var(--cyan); border-bottom-right-radius: 4px; }
+    .approval { margin-top: 13px; padding: 15px; border: 1px solid rgba(200,244,90,.32); border-radius: 15px; background: rgba(200,244,90,.07); }
+    .approval-row { display: flex; gap: 8px; margin-top: 10px; }
+    .fake-btn { padding: 7px 11px; border-radius: 9px; background: var(--lime); color: var(--ink); font-size: 11px; font-weight: 800; }
+    .fake-btn.secondary { color: var(--paper); background: rgba(255,255,255,.1); }
+
+    .architecture {
+      display: grid;
+      grid-template-columns: 1fr 42px 1.15fr 42px 1fr;
+      align-items: center;
+      gap: 12px;
+    }
+    .arch-col { display: grid; gap: 12px; }
+    .arch-box { padding: 18px; border: 1px solid rgba(246,242,232,.17); border-radius: 18px; background: rgba(255,255,255,.05); }
+    .arch-box.core { border-color: rgba(200,244,90,.45); background: rgba(200,244,90,.09); }
+    .arch-box strong { display: block; margin-bottom: 5px; }
+    .arch-box small { color: rgba(246,242,232,.58); }
+    .arch-arrow { text-align: center; color: var(--cyan); font-size: 28px; }
+    .rule-banner { margin-top: 24px; padding: 14px 18px; border-radius: 14px; color: var(--ink); background: var(--lime); font-weight: 750; text-align: center; }
+
+    .agents { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
+    .agent-card { min-height: 190px; display: flex; flex-direction: column; }
+    .agent-card .icon { margin-bottom: 24px; }
+    .agent-card p { margin-bottom: 0; color: var(--muted); font-size: 13px; }
+    .agent-card .tools { margin-top: auto; padding-top: 15px; color: #3c675d; font-family: var(--mono); font-size: 10px; }
+
+    .workflow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+    }
+    .workflow-step { position: relative; min-height: 180px; padding: 18px; border-radius: 18px; border: 1px solid var(--line); background: var(--white); }
+    .workflow-step:not(:last-child)::after { content: "→"; position: absolute; top: 50%; right: -18px; z-index: 3; width: 25px; height: 25px; display: grid; place-items: center; border-radius: 50%; color: var(--paper); background: var(--ink); font-size: 13px; }
+    .workflow-step .tag { margin-bottom: 28px; }
+    .workflow-step p { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+    .gate { border: 2px solid var(--coral); }
+
+    .evidence-map { position: relative; display: grid; grid-template-columns: .9fr 1.2fr .9fr; gap: 50px; align-items: center; }
+    .evidence-map::before, .evidence-map::after { content: ""; position: absolute; top: 50%; height: 1px; background: rgba(246,242,232,.26); }
+    .evidence-map::before { left: 26%; right: 65%; }
+    .evidence-map::after { left: 65%; right: 26%; }
+    .evidence-node { position: relative; z-index: 2; padding: 22px; border-radius: 20px; border: 1px solid rgba(246,242,232,.16); background: #1c322c; }
+    .evidence-node.center { padding: 32px; color: var(--ink); background: var(--lime); transform: scale(1.04); }
+    .fact-list { display: grid; gap: 9px; margin-top: 16px; }
+    .fact { display: flex; gap: 9px; align-items: flex-start; font-size: 12px; }
+    .fact::before { content: "✓"; color: var(--cyan); font-weight: 900; }
+    .center .fact::before { color: var(--ink); }
+
+    .funnel { display: grid; gap: 9px; max-width: 680px; }
+    .funnel-row { display: grid; grid-template-columns: 72px 1fr 74px; gap: 15px; align-items: center; }
+    .funnel-label { font-size: 12px; font-weight: 750; text-align: right; }
+    .funnel-bar { height: 44px; border-radius: 10px; display: flex; align-items: center; padding-left: 16px; color: var(--ink); font-size: 12px; font-weight: 800; }
+    .funnel-row:nth-child(1) .funnel-bar { width: 100%; background: var(--cyan); }
+    .funnel-row:nth-child(2) .funnel-bar { width: 80%; background: #9be6aa; }
+    .funnel-row:nth-child(3) .funnel-bar { width: 60%; background: var(--lime); }
+    .funnel-row:nth-child(4) .funnel-bar { width: 41%; background: var(--gold); }
+    .funnel-row:nth-child(5) .funnel-bar { width: 25%; background: var(--coral); }
+    .funnel-count { font-family: var(--mono); font-size: 11px; }
+
+    .score-stack { display: grid; gap: 11px; }
+    .score-row { display: grid; grid-template-columns: 160px 1fr 52px; align-items: center; gap: 14px; }
+    .score-row label { font-size: 12px; font-weight: 750; }
+    .score-track { height: 11px; border-radius: 99px; background: var(--paper-2); overflow: hidden; }
+    .score-fill { height: 100%; border-radius: inherit; background: var(--ink); }
+    .score-row:nth-child(2) .score-fill { background: #397f70; }
+    .score-row:nth-child(3) .score-fill { background: var(--violet); }
+    .score-row:nth-child(4) .score-fill { background: var(--gold); }
+    .score-row:nth-child(5) .score-fill { background: var(--coral); }
+    .score-row output { font-family: var(--mono); font-size: 11px; text-align: right; }
+    .score-total { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 25px; padding-top: 20px; border-top: 1px solid var(--line); }
+    .score-total strong { font-size: 66px; line-height: .8; letter-spacing: -.07em; }
+    .confidence { display: grid; gap: 4px; text-align: right; }
+
+    .pipeline { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+    .pipe-stage { min-height: 218px; padding: 16px 12px; border: 1px solid rgba(246,242,232,.13); border-radius: 16px; background: rgba(255,255,255,.05); }
+    .pipe-stage.highlight { color: var(--ink); background: var(--lime); }
+    .pipe-stage strong { display: block; min-height: 48px; font-size: 13px; }
+    .pipe-stage .trigger { margin-top: 14px; padding-top: 14px; border-top: 1px solid currentColor; opacity: .68; font-size: 11px; line-height: 1.4; }
+    .pipe-stage .count { display: block; margin-top: 28px; font-size: 33px; line-height: 1; font-weight: 800; }
+
+    .doc-flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .doc-page { position: relative; min-height: 290px; padding: 22px; border-radius: 10px; color: var(--ink); background: var(--white); box-shadow: var(--shadow); }
+    .doc-page::after { content: ""; position: absolute; top: 0; right: 0; border-width: 0 28px 28px 0; border-style: solid; border-color: transparent var(--paper-2) transparent transparent; }
+    .doc-page .doc-lines { display: grid; gap: 8px; margin-top: 25px; }
+    .doc-line { height: 6px; border-radius: 99px; background: var(--paper-2); }
+    .doc-line.short { width: 55%; }
+    .doc-line.accented { width: 76%; background: var(--cyan); }
+    .doc-arrow { display: grid; place-items: center; min-height: 290px; font-size: 27px; }
+    .document-chain { display: grid; grid-template-columns: 1fr 44px 1fr 44px 1fr 44px 1fr; align-items: center; }
+
+    .schema { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; align-items: center; }
+    .entity { position: relative; padding: 16px; border: 1px solid var(--line); border-radius: 15px; background: rgba(255,253,248,.76); text-align: center; }
+    .entity:not(:last-child)::after { content: "→"; position: absolute; right: -19px; top: calc(50% - 12px); z-index: 2; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; color: var(--paper); background: var(--ink); font-size: 12px; }
+    .entity small { display: block; margin-top: 6px; color: var(--muted); font-family: var(--mono); font-size: 9px; }
+    .audit-strip { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-top: 24px; }
+    .audit-item { padding: 13px; border-left: 3px solid var(--cyan); background: rgba(120,229,220,.1); font-size: 12px; }
+
+    table { width: 100%; border-collapse: collapse; border-spacing: 0; font-size: 13px; }
+    th { padding: 10px 14px; border-bottom: 2px solid var(--ink); font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-align: left; text-transform: uppercase; }
+    td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    td:first-child { font-family: var(--mono); font-size: 11px; }
+    .reuse-table td:last-child { color: var(--muted); }
+    .file-ref { color: #356f63; font-family: var(--mono); font-size: 10px; }
+
+    .roadmap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .phase { min-height: 330px; padding: 22px; border: 1px solid rgba(246,242,232,.15); border-radius: 21px; background: rgba(255,255,255,.05); }
+    .phase:first-child { color: var(--ink); background: var(--lime); }
+    .phase .weeks { display: block; margin: 13px 0 36px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
+    .phase ul { margin: 0; padding-left: 17px; font-size: 12px; color: rgba(246,242,232,.67); }
+    .phase:first-child ul { color: rgba(19,35,31,.74); }
+    .phase li + li { margin-top: 9px; }
+
+    .metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 13px; }
+    .metric { min-height: 190px; display: flex; flex-direction: column; justify-content: space-between; }
+    .metric .big-number { font-size: clamp(42px, 4.4vw, 68px); }
+    .metric p { margin-bottom: 0; color: var(--muted); font-size: 12px; }
+    .risk-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }
+    .risk { padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,253,248,.55); font-size: 12px; }
+    .risk b { color: #a93926; }
+
+    .decision-list { display: grid; gap: 12px; max-width: 900px; }
+    .decision { display: grid; grid-template-columns: 50px 1fr auto; gap: 18px; align-items: center; padding: 16px 18px; border: 1px solid rgba(246,242,232,.14); border-radius: 17px; background: rgba(255,255,255,.05); }
+    .decision .num { font-family: var(--mono); color: var(--cyan); font-weight: 800; }
+    .decision p { margin: 3px 0 0; color: rgba(246,242,232,.6); font-size: 12px; }
+
+    .closing { max-width: 1060px; }
+    .closing h2 { font-size: clamp(50px, 7.5vw, 112px); }
+    .closing-strip { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 34px; }
+
+    .deck-nav {
+      position: fixed;
+      z-index: 20;
+      right: 20px;
+      bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 999px;
+      color: var(--paper);
+      background: rgba(19,35,31,.86);
+      box-shadow: 0 8px 30px rgba(0,0,0,.17);
+      backdrop-filter: blur(12px);
+    }
+    .deck-nav button { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; color: inherit; background: transparent; cursor: pointer; }
+    .deck-nav button:hover, .deck-nav button:focus-visible { color: var(--ink); background: var(--lime); outline: none; }
+    .deck-count { min-width: 46px; font-family: var(--mono); font-size: 10px; text-align: center; }
+    .progress { position: fixed; top: 0; left: 0; z-index: 30; width: 0; height: 4px; background: var(--lime); transition: width .2s ease; }
+    .hint { position: fixed; left: 20px; bottom: 22px; z-index: 10; padding: 7px 10px; border-radius: 999px; color: var(--paper); background: rgba(19,35,31,.72); font-family: var(--mono); font-size: 9px; letter-spacing: .05em; opacity: .7; }
+
+    @media screen and (max-width: 980px) {
+      html { scroll-snap-type: none; }
+      .slide { height: auto; min-height: 100svh; overflow: visible; }
+      .split, .split.wide-left { grid-template-columns: 1fr; gap: 34px; }
+      .grid.four, .metrics, .roadmap { grid-template-columns: repeat(2, 1fr); }
+      .grid.three, .agents { grid-template-columns: repeat(2, 1fr); }
+      .north-star { grid-template-columns: 1fr; }
+      .north-star .arrow { transform: rotate(90deg); }
+      .architecture { grid-template-columns: 1fr; }
+      .arch-arrow { transform: rotate(90deg); }
+      .workflow { grid-template-columns: repeat(2,1fr); }
+      .workflow-step:not(:last-child)::after { display: none; }
+      .pipeline { grid-template-columns: repeat(3, 1fr); }
+      .evidence-map { grid-template-columns: 1fr; gap: 14px; }
+      .evidence-map::before, .evidence-map::after { display: none; }
+      .document-chain { grid-template-columns: 1fr; }
+      .doc-arrow { min-height: 44px; transform: rotate(90deg); }
+      .schema { grid-template-columns: 1fr; }
+      .entity:not(:last-child)::after { display: none; }
+      .audit-strip { grid-template-columns: repeat(2,1fr); }
+      .hero-art { opacity: .16; width: 70vw; }
+    }
+    @media screen and (max-width: 620px) {
+      .slide { padding-left: 20px; padding-right: 20px; }
+      .topline { left: 20px; right: 20px; }
+      .grid.two, .grid.three, .grid.four, .agents, .metrics, .roadmap, .workflow, .pipeline, .risk-grid { grid-template-columns: 1fr; }
+      .chat-shell { margin: 0; }
+      .score-row { grid-template-columns: 100px 1fr 42px; }
+      .audit-strip { grid-template-columns: 1fr; }
+      .decision { grid-template-columns: 36px 1fr; }
+      .decision .tag { grid-column: 2; justify-self: start; }
+      .hint { display: none; }
+      table { font-size: 11px; }
+      th, td { padding: 8px; }
+    }
+    @media print {
+      @page { size: 16in 9in; margin: 0; }
+      html, body { background: white; }
+      .slide { width: 16in; height: 9in; min-height: 9in; page-break-after: always; break-after: page; padding: .68in .85in; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .deck-nav, .progress, .hint { display: none !important; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="progress" id="progress" aria-hidden="true"></div>
+
+  <main id="deck">
+    <section class="slide dark" id="slide-1" aria-labelledby="title-1">
+      <div class="topline"><span><i class="brand-dot"></i>Job Search Studio</span><span class="slide-no">01 / 15</span></div>
+      <div class="hero-art" aria-hidden="true"></div>
+      <div style="position:relative;z-index:2;max-width:1050px">
+        <p class="kicker">Agentic architecture proposal · August 2026</p>
+        <h1 id="title-1">Job search,<br><span class="accent">orchestrated.</span></h1>
+        <p class="lede">A calm, evidence-first system that learns the candidate, finds the right opportunities, explains the fit, and prepares application-ready materials—with the human in control.</p>
+        <div class="hero-meta">
+          <span class="tag lime">One trusted profile</span>
+          <span class="tag cyan">Six specialist agents</span>
+          <span class="tag coral">Human approval gates</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-2" aria-labelledby="title-2">
+      <div class="topline"><span>01 · Product thesis</span><span class="slide-no">02 / 15</span></div>
+      <p class="kicker">The north star</p>
+      <h2 id="title-2">Optimize for <span class="marker">better decisions</span>, not more automation.</h2>
+      <div class="north-star">
+        <div class="card">
+          <span class="tag cyan">System learns</span>
+          <strong>A truthful, living model of the candidate</strong>
+          <p class="muted micro">Facts, evidence, preferences, constraints, aspirations, and unknowns.</p>
+        </div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="card">
+          <span class="tag lime">System recommends</span>
+          <strong>A small, ranked queue worth attention</strong>
+          <p class="muted micro">Recent jobs, hard constraints respected, fit explained in plain language.</p>
+        </div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="card">
+          <span class="tag coral">Human decides</span>
+          <strong>Apply with confidence and control</strong>
+          <p class="muted micro">Approve the opportunity, the claims, and the final documents.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide dark" id="slide-3" aria-labelledby="title-3">
+      <div class="topline"><span>02 · Experience model</span><span class="slide-no">03 / 15</span></div>
+      <div class="split">
+        <div>
+          <p class="kicker">One conversation, one command center</p>
+          <h2 id="title-3">The interface should feel like a <span class="accent">chief of staff</span>.</h2>
+          <p class="lede">Chat handles ambiguity. The workbench handles inspection, comparison, editing, and approval.</p>
+          <div class="grid two" style="margin-top:34px">
+            <div class="card"><span class="card-num">CHAT IS FOR</span><h3>Intent & clarification</h3><p class="muted micro">“Focus on Toronto hybrid roles.” “I did lead that migration.” “Why is this only a 68?”</p></div>
+            <div class="card"><span class="card-num">UI IS FOR</span><h3>State & control</h3><p class="muted micro">Queues, score evidence, side-by-side diffs, pipeline dates, and approvals.</p></div>
+          </div>
+        </div>
+        <div class="chat-shell" aria-label="Example assistant conversation">
+          <div class="chat-head"><span class="agent-pulse"></span><strong>Search Concierge</strong><span class="tag" style="margin-left:auto">online</span></div>
+          <div class="message agent">I found 18 new roles. Seven pass your location and compensation constraints; three look especially strong.</div>
+          <div class="message user">Prioritize product-facing platform roles. Avoid pure people-management positions.</div>
+          <div class="message agent">Understood. That changes two preferences in your profile and moves Northstar’s Platform Lead role to the top.</div>
+          <div class="approval"><strong>Before I save this</strong><div class="micro muted">Treat “hands-on technical work” as a must-have preference?</div><div class="approval-row"><span class="fake-btn">Yes, save it</span><span class="fake-btn secondary">Not always</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide dark" id="slide-4" aria-labelledby="title-4">
+      <div class="topline"><span>03 · System shape</span><span class="slide-no">04 / 15</span></div>
+      <p class="kicker">Agentic, not anarchic</p>
+      <h2 id="title-4">One durable orchestrator.<br>Specialist workflows. <span class="accent">Shared truth.</span></h2>
+      <div class="architecture">
+        <div class="arch-col">
+          <div class="arch-box"><strong>Angular workbench</strong><small>Queues, review surfaces, diffs, pipeline</small></div>
+          <div class="arch-box"><strong>Conversation layer</strong><small>Intent, clarification, approvals, explanations</small></div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-col">
+          <div class="arch-box core"><strong>Workflow orchestrator</strong><small>Plans bounded runs, calls tools, waits for gates, resumes safely</small></div>
+          <div class="arch-box"><strong>Agent run ledger</strong><small>run · step · input · output · cost · status · approval</small></div>
+          <div class="arch-box"><strong>Policy & evaluation</strong><small>Evidence rules, permissions, budgets, quality checks</small></div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-col">
+          <div class="arch-box"><strong>Django domain tools</strong><small>Profile · sourcing · scoring · pipeline · documents</small></div>
+          <div class="arch-box"><strong>Celery + Redis</strong><small>Durable jobs, schedules, retries, realtime progress</small></div>
+          <div class="arch-box"><strong>PostgreSQL + files</strong><small>Canonical records, evidence, artifacts, audit history</small></div>
+        </div>
+      </div>
+      <div class="rule-banner">Agents never “own” data. They propose and execute typed domain actions against one source of truth.</div>
+    </section>
+
+    <section class="slide" id="slide-5" aria-labelledby="title-5">
+      <div class="topline"><span>04 · Agent team</span><span class="slide-no">05 / 15</span></div>
+      <p class="kicker">Six roles, deliberately narrow</p>
+      <h2 id="title-5">Specialists collaborate through <span class="marker">typed handoffs</span>.</h2>
+      <div class="agents">
+        <div class="card agent-card"><span class="icon lime">P</span><h3>Profile Steward</h3><p>Ingests evidence, resolves contradictions, identifies gaps, asks verification questions.</p><span class="tools">read_document · propose_fact · request_verification</span></div>
+        <div class="card agent-card"><span class="icon cyan">S</span><h3>Sourcing Scout</h3><p>Runs compliant connectors, normalizes postings, deduplicates, and checks recency.</p><span class="tools">run_source · fetch_posting · upsert_job</span></div>
+        <div class="card agent-card"><span class="icon violet">M</span><h3>Match Analyst</h3><p>Applies hard filters, evaluates evidence, explains strengths, gaps, and uncertainty.</p><span class="tools">load_profile · score_job · cite_fact</span></div>
+        <div class="card agent-card"><span class="icon coral">A</span><h3>Application Coach</h3><p>Maintains next actions, follow-ups, interview context, and pipeline hygiene.</p><span class="tools">move_stage · schedule_followup · summarize_event</span></div>
+        <div class="card agent-card"><span class="icon lime">D</span><h3>Document Tailor</h3><p>Creates claim-safe resume and cover-letter plans, renders approved PDFs.</p><span class="tools">plan_changes · validate_claim · render_pdf</span></div>
+        <div class="card agent-card"><span class="icon cyan">C</span><h3>Search Concierge</h3><p>Owns the conversation, routes intent, summarizes work, and requests decisions.</p><span class="tools">delegate_run · ask_question · present_approval</span></div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-6" aria-labelledby="title-6">
+      <div class="topline"><span>05 · Orchestration</span><span class="slide-no">06 / 15</span></div>
+      <p class="kicker">A run is a resumable state machine</p>
+      <h2 id="title-6">Autonomy happens <span class="marker">between clear gates</span>.</h2>
+      <div class="workflow">
+        <div class="workflow-step"><span class="tag cyan">01 · Trigger</span><h3>Event arrives</h3><p>User message, schedule, source refresh, or pipeline change.</p></div>
+        <div class="workflow-step"><span class="tag violet">02 · Context</span><h3>Retrieve narrowly</h3><p>Relevant profile facts, job version, policies, and prior decisions.</p></div>
+        <div class="workflow-step"><span class="tag lime">03 · Act</span><h3>Call typed tools</h3><p>One bounded workflow with idempotency, budgets, and structured output.</p></div>
+        <div class="workflow-step gate"><span class="tag coral">04 · Gate</span><h3>Ask when it matters</h3><p>New facts, apply decisions, unsupported claims, messages, final artifacts.</p></div>
+        <div class="workflow-step"><span class="tag">05 · Commit</span><h3>Save + explain</h3><p>Persist outcome, provenance, audit event, and suggested next action.</p></div>
+      </div>
+      <div class="grid three" style="margin-top:22px">
+        <div class="card"><h3>Retryable</h3><p class="micro muted">Every tool call has a stable key and can safely resume after failure.</p></div>
+        <div class="card"><h3>Observable</h3><p class="micro muted">Run status streams over the existing realtime channel.</p></div>
+        <div class="card"><h3>Interruptible</h3><p class="micro muted">The user can pause schedules, cancel runs, or change intent.</p></div>
+      </div>
+    </section>
+
+    <section class="slide dark" id="slide-7" aria-labelledby="title-7">
+      <div class="topline"><span>06 · Candidate intelligence</span><span class="slide-no">07 / 15</span></div>
+      <p class="kicker">The profile is a knowledge base—not a résumé blob</p>
+      <h2 id="title-7">Every useful claim keeps its <span class="accent">receipt</span>.</h2>
+      <div class="evidence-map">
+        <div class="evidence-node"><span class="tag cyan">Sources</span><div class="fact-list"><span class="fact">Résumé / LinkedIn export</span><span class="fact">Project notes & portfolio</span><span class="fact">Performance reviews</span><span class="fact">Chat confirmations</span></div></div>
+        <div class="evidence-node center"><span class="tag">Candidate graph</span><div class="fact-list"><span class="fact">Fact + normalized concept</span><span class="fact">Source span + confidence</span><span class="fact">Time range + recency</span><span class="fact">Verification status</span><span class="fact">Relationships & depth</span></div></div>
+        <div class="evidence-node"><span class="tag coral">Consumers</span><div class="fact-list"><span class="fact">Job matching</span><span class="fact">Resume claims</span><span class="fact">Cover letters</span><span class="fact">Interview stories</span></div></div>
+      </div>
+      <div class="grid three" style="margin-top:26px">
+        <div class="card"><h3>Add explicit truth states</h3><p class="micro muted">proposed → verified → superseded / disputed</p></div>
+        <div class="card"><h3>Model preference strength</h3><p class="micro muted">must-have · strong · flexible · avoid</p></div>
+        <div class="card"><h3>Ask high-value questions</h3><p class="micro muted">Prioritize facts that would change rankings or unlock a claim.</p></div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-8" aria-labelledby="title-8">
+      <div class="topline"><span>07 · Sourcing</span><span class="slide-no">08 / 15</span></div>
+      <div class="split wide-left">
+        <div>
+          <p class="kicker">Fresh, compliant, quiet</p>
+          <h2 id="title-8">Turn the open web into a <span class="marker">small review queue</span>.</h2>
+          <div class="funnel" aria-label="Illustrative sourcing funnel">
+            <div class="funnel-row"><span class="funnel-label">Fetched</span><div class="funnel-bar">ATS feeds · APIs · career pages · manual</div><span class="funnel-count">240</span></div>
+            <div class="funnel-row"><span class="funnel-label">Fresh</span><div class="funnel-bar">Posting open + within age window</div><span class="funnel-count">191</span></div>
+            <div class="funnel-row"><span class="funnel-label">Unique</span><div class="funnel-bar">Canonical company / role dedupe</div><span class="funnel-count">143</span></div>
+            <div class="funnel-row"><span class="funnel-label">Eligible</span><div class="funnel-bar">Hard constraints pass</div><span class="funnel-count">64</span></div>
+            <div class="funnel-row"><span class="funnel-label">Review</span><div class="funnel-bar">Score + novelty threshold</div><span class="funnel-count">18</span></div>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="card"><span class="tag lime">Connector contract</span><h3 style="margin-top:18px">fetch → normalize → version → dedupe → score</h3><p class="micro muted">Each connector returns the same typed posting record and stores raw provenance.</p></div>
+          <div class="card"><span class="card-num">FIRST SOURCES</span><h3>Manual URL/paste, Greenhouse, Lever, Ashby, RSS</h3><p class="micro muted">High signal and structurally accessible. Add broad aggregators only when quality can be measured.</p></div>
+          <div class="card"><span class="card-num">FRESHNESS POLICY</span><h3>Re-check before recommending and before applying</h3><p class="micro muted">Closed or materially changed postings are marked stale, never silently overwritten.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-9" aria-labelledby="title-9">
+      <div class="topline"><span>08 · Scoring</span><span class="slide-no">09 / 15</span></div>
+      <div class="split">
+        <div>
+          <p class="kicker">A score is a decision aid, not a verdict</p>
+          <h2 id="title-9">Separate <span class="marker">eligibility</span>, fit, and confidence.</h2>
+          <p class="lede">First enforce hard constraints. Then combine transparent signals. Finally disclose how much evidence supports the result.</p>
+          <div class="grid two" style="margin-top:30px">
+            <div class="card"><span class="tag coral">Hard gate</span><h3 style="margin-top:17px">pass · uncertain · fail</h3><p class="micro muted">Authorization, geography, compensation, credential, seniority.</p></div>
+            <div class="card"><span class="tag cyan">Calibration</span><h3 style="margin-top:17px">Learn from choices</h3><p class="micro muted">Track save/apply/response outcomes by score band—never silently rewrite preferences.</p></div>
+          </div>
+        </div>
+        <div class="card" style="padding:30px">
+          <span class="tag lime">Illustrative decomposition</span>
+          <div class="score-stack" style="margin-top:27px">
+            <div class="score-row"><label>Skills & depth</label><div class="score-track"><div class="score-fill" style="width:88%"></div></div><output>35%</output></div>
+            <div class="score-row"><label>Experience evidence</label><div class="score-track"><div class="score-fill" style="width:82%"></div></div><output>25%</output></div>
+            <div class="score-row"><label>Role direction</label><div class="score-track"><div class="score-fill" style="width:94%"></div></div><output>20%</output></div>
+            <div class="score-row"><label>Domain relevance</label><div class="score-track"><div class="score-fill" style="width:62%"></div></div><output>10%</output></div>
+            <div class="score-row"><label>Logistics</label><div class="score-track"><div class="score-fill" style="width:76%"></div></div><output>10%</output></div>
+          </div>
+          <div class="score-total"><div><span class="micro muted">FIT SCORE</span><strong>84</strong></div><div class="confidence"><span class="tag cyan">High confidence</span><small class="muted">16 facts cited · 2 gaps</small></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide dark" id="slide-10" aria-labelledby="title-10">
+      <div class="topline"><span>09 · Application pipeline</span><span class="slide-no">10 / 15</span></div>
+      <p class="kicker">State changes create useful work</p>
+      <h2 id="title-10">The pipeline is the system’s <span class="accent">operational spine</span>.</h2>
+      <div class="pipeline">
+        <div class="pipe-stage"><strong>Review</strong><span class="count">18</span><div class="trigger">Daily digest<br>Explain fit & freshness</div></div>
+        <div class="pipe-stage"><strong>Approved to prepare</strong><span class="count">4</span><div class="trigger">Start document plan<br>Ask missing facts</div></div>
+        <div class="pipe-stage highlight"><strong>Materials ready</strong><span class="count">3</span><div class="trigger">Final human approval<br>Export PDF bundle</div></div>
+        <div class="pipe-stage"><strong>Applied</strong><span class="count">7</span><div class="trigger">Record artifact version<br>Schedule follow-up</div></div>
+        <div class="pipe-stage"><strong>Interviewing</strong><span class="count">2</span><div class="trigger">Build prep brief<br>Capture feedback</div></div>
+        <div class="pipe-stage"><strong>Outcome</strong><span class="count">5</span><div class="trigger">Close loop<br>Update analytics</div></div>
+      </div>
+      <p class="lede" style="margin-top:28px">Keep a compact canonical state machine; represent nuance as events and tasks. Every transition records who changed it, why, and what version of the materials was used.</p>
+    </section>
+
+    <section class="slide dark" id="slide-11" aria-labelledby="title-11">
+      <div class="topline"><span>10 · Application materials</span><span class="slide-no">11 / 15</span></div>
+      <p class="kicker">Plan → prove → review → render</p>
+      <h2 id="title-11">Tailor the story—<span class="accent">never the truth</span>.</h2>
+      <div class="document-chain">
+        <div class="doc-page"><span class="tag">01 · Plan</span><h3 style="margin-top:18px">Change plan</h3><div class="doc-lines"><span class="doc-line accented"></span><span class="doc-line"></span><span class="doc-line short"></span><span class="doc-line"></span></div><p class="micro muted" style="margin-top:24px">Target themes, section moves, keyword gaps, evidence candidates.</p></div>
+        <div class="doc-arrow">→</div>
+        <div class="doc-page"><span class="tag cyan">02 · Draft</span><h3 style="margin-top:18px">Structured content</h3><div class="doc-lines"><span class="doc-line"></span><span class="doc-line accented"></span><span class="doc-line"></span><span class="doc-line short"></span></div><p class="micro muted" style="margin-top:24px">Resume + concise cover letter, each claim linked to facts.</p></div>
+        <div class="doc-arrow">→</div>
+        <div class="doc-page"><span class="tag coral">03 · Review</span><h3 style="margin-top:18px">Diff + warnings</h3><div class="doc-lines"><span class="doc-line accented"></span><span class="doc-line short"></span><span class="doc-line"></span><span class="doc-line accented"></span></div><p class="micro muted" style="margin-top:24px">Unsupported claims block approval. Weak evidence asks a question.</p></div>
+        <div class="doc-arrow">→</div>
+        <div class="doc-page"><span class="tag lime">04 · PDF</span><h3 style="margin-top:18px">HTML → Gotenberg</h3><div class="doc-lines"><span class="doc-line short"></span><span class="doc-line"></span><span class="doc-line"></span><span class="doc-line short"></span></div><p class="micro muted" style="margin-top:24px">Versioned template, print CSS, embedded fonts, final PDF artifact.</p></div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-12" aria-labelledby="title-12">
+      <div class="topline"><span>11 · Data & audit</span><span class="slide-no">12 / 15</span></div>
+      <p class="kicker">One domain model underneath every agent</p>
+      <h2 id="title-12">Make the work <span class="marker">traceable end to end</span>.</h2>
+      <div class="schema">
+        <div class="entity"><strong>CandidateProfile</strong><small>facts · preferences · evidence</small></div>
+        <div class="entity"><strong>JobPosting</strong><small>version · source · requirements</small></div>
+        <div class="entity"><strong>MatchAssessment</strong><small>signals · citations · confidence</small></div>
+        <div class="entity"><strong>Application</strong><small>state · events · next action</small></div>
+        <div class="entity"><strong>ArtifactVersion</strong><small>template · claims · checksum</small></div>
+      </div>
+      <div class="audit-strip">
+        <div class="audit-item"><strong>AgentRun</strong><br><span class="muted">goal, status, model, tokens, cost</span></div>
+        <div class="audit-item"><strong>AgentStep</strong><br><span class="muted">tool, input hash, output, latency</span></div>
+        <div class="audit-item"><strong>ApprovalRequest</strong><br><span class="muted">decision, options, actor, timestamp</span></div>
+        <div class="audit-item"><strong>DomainEvent</strong><br><span class="muted">before, after, reason, correlation id</span></div>
+      </div>
+      <div class="grid two" style="margin-top:22px">
+        <div class="card"><h3>Version what changes</h3><p class="micro muted">Job descriptions, candidate facts, score rubrics, prompts, templates, and generated artifacts.</p></div>
+        <div class="card"><h3>Keep vectors subordinate</h3><p class="micro muted">Use pgvector for retrieval; keep structured records and source spans authoritative.</p></div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-13" aria-labelledby="title-13">
+      <div class="topline"><span>12 · Reuse assessment</span><span class="slide-no">13 / 15</span></div>
+      <p class="kicker">The current MVP is a strong domain foundation</p>
+      <h2 id="title-13">Reuse the spine. <span class="marker">Add the nervous system.</span></h2>
+      <table class="reuse-table" aria-label="Current component reuse assessment">
+        <thead><tr><th>Capability</th><th>Decision</th><th>What exists now</th><th>Next move</th></tr></thead>
+        <tbody>
+          <tr><td>Profile evidence</td><td><span class="status keep">Keep</span></td><td>Documents, chunks, facts, embeddings, verification</td><td>Fact lifecycle, source spans, preferences, contradictions<br><span class="file-ref">core/models.py · services.ingest_profile_document</span></td></tr>
+          <tr><td>Job normalization</td><td><span class="status extend">Extend</span></td><td>Sources, postings, structured extraction, content hash</td><td>Connector SDK, source runs, job versions, recency checks<br><span class="file-ref">JobSource · JobPosting · import_job_posting</span></td></tr>
+          <tr><td>Match engine</td><td><span class="status extend">Extend</span></td><td>Semantic + skill + lexical score, evidence and gaps</td><td>Hard gates, weighted rubric, job requirements, calibration<br><span class="file-ref">services.recompute_match · JobMatch</span></td></tr>
+          <tr><td>Pipeline</td><td><span class="status keep">Keep</span></td><td>11 statuses, events, contacts, dates, linked résumé</td><td>Transition service, tasks, reminders, outcome reasons<br><span class="file-ref">Application · ApplicationEvent</span></td></tr>
+          <tr><td>Materials</td><td><span class="status extend">Extend</span></td><td>Canonical/tailored resumes, validation, claims, artifacts</td><td>Cover letter model, change plan, HTML templates, Gotenberg<br><span class="file-ref">Resume · ResumeClaim · Artifact</span></td></tr>
+          <tr><td>Agent runtime</td><td><span class="status build">Build</span></td><td>Responses API, Celery tasks, realtime event channel</td><td>Runs, steps, typed tools, approval gates, chat threads<br><span class="file-ref">core/ai.py · tasks.py · realtime_events.py</span></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="slide dark" id="slide-14" aria-labelledby="title-14">
+      <div class="topline"><span>13 · Delivery plan</span><span class="slide-no">14 / 15</span></div>
+      <p class="kicker">Ship vertical value, then increase autonomy</p>
+      <h2 id="title-14">A pragmatic <span class="accent">four-phase path</span>.</h2>
+      <div class="roadmap">
+        <div class="phase"><span class="tag">Phase 1</span><span class="weeks">Weeks 1–3 · Trust core</span><h3>Make profile + scoring reliable</h3><ul><li>Candidate profile & preference schema</li><li>Requirement-level job extraction</li><li>Hard filters + decomposed score</li><li>Evidence citations and eval dataset</li></ul></div>
+        <div class="phase"><span class="tag cyan">Phase 2</span><span class="weeks">Weeks 4–6 · Daily loop</span><h3>Source and triage jobs</h3><ul><li>Source-run model + connector contract</li><li>Greenhouse / Lever / Ashby adapters</li><li>Freshness, dedupe, review queue</li><li>Daily digest and feedback capture</li></ul></div>
+        <div class="phase"><span class="tag coral">Phase 3</span><span class="weeks">Weeks 7–9 · Apply loop</span><h3>Prepare polished materials</h3><ul><li>Approval-driven pipeline transitions</li><li>Résumé + cover-letter change plans</li><li>Claim validator and diff review</li><li>HTML templates + Gotenberg PDFs</li></ul></div>
+        <div class="phase"><span class="tag violet">Phase 4</span><span class="weeks">Weeks 10–12 · Agent layer</span><h3>Unify through conversation</h3><ul><li>Agent runs, steps, and approvals</li><li>Concierge chat and typed tools</li><li>Scheduled workflows + recovery</li><li>Outcome analytics and calibration</li></ul></div>
+      </div>
+    </section>
+
+    <section class="slide coral" id="slide-15" aria-labelledby="title-15">
+      <div class="topline"><span>14 · Recommendation</span><span class="slide-no">15 / 15</span></div>
+      <div class="closing">
+        <p class="kicker" style="color:var(--ink)">What to do next</p>
+        <h2 id="title-15">Build the <span style="color:var(--white)">decision loop</span> before the agent spectacle.</h2>
+        <p class="lede" style="color:rgba(19,35,31,.74)">The fastest path is to deepen the existing domain model, make matching trustworthy, and ship one end-to-end workflow: new job → explained match → user approval → tailored résumé + cover letter → PDF → tracked application.</p>
+        <div class="closing-strip">
+          <span class="tag lime">1 · Trustworthy profile</span>
+          <span class="tag cyan">2 · Fresh ranked queue</span>
+          <span class="tag violet">3 · Explainable decision</span>
+          <span class="tag" style="background:var(--white)">4 · Application-ready bundle</span>
+        </div>
+        <div class="card" style="margin-top:34px;max-width:840px;background:rgba(255,253,248,.72)">
+          <span class="card-num">FIRST DEMO TO TARGET</span>
+          <h3 style="font-size:24px">“I found three strong roles this morning. Here is why they fit. Which one should I prepare?”</h3>
+          <p class="micro muted">That moment proves profile intelligence, sourcing, scoring, collaboration, user control, document generation, and pipeline continuity in one coherent experience.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="hint" aria-hidden="true">← → navigate · F fullscreen · P print</div>
+  <nav class="deck-nav" aria-label="Presentation controls">
+    <button id="prev" type="button" aria-label="Previous slide">←</button>
+    <span class="deck-count" id="deck-count">01 / 15</span>
+    <button id="next" type="button" aria-label="Next slide">→</button>
+  </nav>
+
+  <script>
+    (() => {
+      const slides = [...document.querySelectorAll('.slide')];
+      const count = document.getElementById('deck-count');
+      const progress = document.getElementById('progress');
+      let current = 0;
+
+      const pad = value => String(value).padStart(2, '0');
+      const update = index => {
+        current = Math.max(0, Math.min(slides.length - 1, index));
+        count.textContent = `${pad(current + 1)} / ${pad(slides.length)}`;
+        progress.style.width = `${((current + 1) / slides.length) * 100}%`;
+        history.replaceState(null, '', `#slide-${current + 1}`);
+      };
+      const go = index => {
+        update(index);
+        slides[current].scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      };
+
+      document.getElementById('prev').addEventListener('click', () => go(current - 1));
+      document.getElementById('next').addEventListener('click', () => go(current + 1));
+      document.addEventListener('keydown', event => {
+        if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(event.key)) { event.preventDefault(); go(current + 1); }
+        if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key)) { event.preventDefault(); go(current - 1); }
+        if (event.key === 'Home') { event.preventDefault(); go(0); }
+        if (event.key === 'End') { event.preventDefault(); go(slides.length - 1); }
+        if (event.key.toLowerCase() === 'f') document.documentElement.requestFullscreen?.();
+        if (event.key.toLowerCase() === 'p') window.print();
+      });
+
+      const fromHash = Number((location.hash.match(/slide-(\d+)/) || [])[1]);
+      if (fromHash && slides[fromHash - 1]) {
+        current = fromHash - 1;
+        slides[current].scrollIntoView();
+      }
+      update(current);
+
+      const observer = new IntersectionObserver(entries => {
+        const visible = entries.filter(entry => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible) update(slides.indexOf(visible.target));
+      }, { threshold: [.35, .6, .85] });
+      slides.forEach(slide => observer.observe(slide));
+    })();
+  </script>
+</body>
+</html>
