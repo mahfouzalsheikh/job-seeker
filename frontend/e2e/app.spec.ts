@@ -17,7 +17,7 @@ async function login(page: Page): Promise<void> {
   await page.goto('/login');
   await expect(page).toHaveTitle(/Forth/);
   await expect(page.locator('.auth-brand:visible, .mobile-auth-brand:visible')).toContainText('Forth');
-  await page.getByLabel('Username').fill('admin');
+  await page.getByLabel('Email or username').fill('admin');
   await page.getByLabel('Password').fill('adminpass');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page).toHaveURL(/\/dashboard$/);

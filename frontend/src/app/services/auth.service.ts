@@ -8,6 +8,10 @@ interface TokenResponse {
   refresh: string;
 }
 
+interface RegistrationResponse extends TokenResponse {
+  user: { id: number; email: string };
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly accessKey = 'forth_access';
@@ -19,8 +23,21 @@ export class AuthService {
   constructor(private http: HttpClient) {}
 
   login(username: string, password: string): Observable<TokenResponse> {
-    return this.http.post<TokenResponse>(`${environment.apiBaseUrl}/auth/login/`, { username, password }).pipe(
+    const identity = username.trim();
+    const normalizedIdentity = identity.includes('@') ? identity.toLowerCase() : identity;
+    return this.http.post<TokenResponse>(`${environment.apiBaseUrl}/auth/login/`, { username: normalizedIdentity, password }).pipe(
       tap((tokens) => {
+        localStorage.setItem(this.accessKey, tokens.access);
+        localStorage.setItem(this.refreshKey, tokens.refresh);
+        this.authedSubject.next(true);
+      }),
+    );
+  }
+
+  signup(email: string, password: string): Observable<RegistrationResponse> {
+    return this.http.post<RegistrationResponse>(`${environment.apiBaseUrl}/auth/signup/`, { email, password }).pipe(
+      tap((tokens) => {
+        sessionStorage.removeItem('forth_onboarding_dismissed');
         localStorage.setItem(this.accessKey, tokens.access);
         localStorage.setItem(this.refreshKey, tokens.refresh);
         this.authedSubject.next(true);
@@ -48,6 +65,7 @@ export class AuthService {
   logout(): void {
     localStorage.removeItem(this.accessKey);
     localStorage.removeItem(this.refreshKey);
+    sessionStorage.removeItem('forth_onboarding_dismissed');
     this.authedSubject.next(false);
   }
 

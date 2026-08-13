@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -42,6 +45,34 @@ class OwnerScopedRelationsMixin:
             field = self.fields.get(field_name)
             if field is not None and hasattr(field, 'queryset'):
                 field.queryset = model.objects.filter(owner=owner) if authenticated else model.objects.none()
+
+
+class RegistrationSerializer(serializers.Serializer):
+    # Django's default username field is 150 characters; signup stores the
+    # normalized email there so the same value can be used at sign-in.
+    email = serializers.EmailField(max_length=150)
+    password = serializers.CharField(write_only=True, trim_whitespace=False, style={'input_type': 'password'})
+
+    def validate_email(self, value):
+        email = value.strip().lower()
+        User = get_user_model()
+        if User.objects.filter(email__iexact=email).exists() or User.objects.filter(username__iexact=email).exists():
+            raise serializers.ValidationError('An account with this email already exists.')
+        return email
+
+    def validate(self, attrs):
+        User = get_user_model()
+        candidate = User(username=attrs['email'], email=attrs['email'])
+        try:
+            validate_password(attrs['password'], user=candidate)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({'password': list(exc.messages)}) from exc
+        return attrs
+
+    def create(self, validated_data):
+        User = get_user_model()
+        email = validated_data['email']
+        return User.objects.create_user(username=email, email=email, password=validated_data['password'])
 
 
 class ProfileDocumentSerializer(serializers.ModelSerializer):

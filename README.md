@@ -64,6 +64,10 @@ Open the app at:
 http://localhost:8021
 ```
 
+Choose **Create your workspace** to register with an email address and password.
+Forth signs you in immediately and opens the Profile Steward onboarding flow; local
+development does not require email verification.
+
 Default local admin user created by the container:
 
 ```text

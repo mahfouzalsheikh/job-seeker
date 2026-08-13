@@ -24,6 +24,7 @@ from core.views import (
     ProfileDocumentViewSet,
     ProfileFactViewSet,
     ResumeViewSet,
+    RegistrationView,
     SourceRunViewSet,
     StrategyView,
     TodayView,
@@ -49,6 +50,7 @@ router.register('approvals', ApprovalRequestViewSet, basename='approval-request'
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/auth/signup/', RegistrationView.as_view(), name='signup'),
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/dashboard/', DashboardView.as_view(), name='dashboard'),
     path('api/today/', TodayView.as_view(), name='today'),

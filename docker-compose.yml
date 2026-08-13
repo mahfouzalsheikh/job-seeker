@@ -2,7 +2,7 @@ x-backend-env: &backend_env
   DATABASE_URL: postgresql://job_seeker:job_seeker@db:5432/job_seeker
   REDIS_URL: redis://redis:6379/0
   JOB_SEEKER_DATA_DIR: /app/data
-  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-forth-secret-key-change-me}
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-forth-secret-key-change-me-at-least-32-bytes}
   DJANGO_ALLOWED_HOSTS: "*"
   DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-http://localhost:8021,http://127.0.0.1:8021}
   OPENAI_TEXT_MODEL: ${OPENAI_TEXT_MODEL:-gpt-4.1-mini}

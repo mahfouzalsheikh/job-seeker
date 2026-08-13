@@ -151,6 +151,38 @@ class AgenticApiOwnershipTests(APITestCase):
             owner=self.other, kind='verify_fact', title='Other approval', prompt='No access', payload={},
         )
 
+    def test_signup_creates_account_and_returns_an_immediate_session(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.post('/api/auth/signup/', {
+            'email': 'New.Candidate@example.com',
+            'password': 'A-strong-career-password-2026',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertTrue(response.data['access'])
+        self.assertTrue(response.data['refresh'])
+        user = get_user_model().objects.get(email='new.candidate@example.com')
+        self.assertEqual(user.username, 'new.candidate@example.com')
+        self.assertTrue(user.check_password('A-strong-career-password-2026'))
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['access']}")
+        onboarding = self.client.get('/api/profile/onboarding/')
+        self.assertEqual(onboarding.status_code, status.HTTP_200_OK)
+        self.assertTrue(onboarding.data['needs_onboarding'])
+        self.assertEqual(onboarding.data['step']['id'], 'welcome')
+
+    def test_signup_rejects_duplicate_email_and_weak_password(self):
+        self.client.force_authenticate(user=None)
+        get_user_model().objects.create_user(username='taken@example.com', email='taken@example.com', password='Existing-password-2026')
+
+        duplicate = self.client.post('/api/auth/signup/', {'email': 'TAKEN@example.com', 'password': 'Another-password-2026'}, format='json')
+        weak = self.client.post('/api/auth/signup/', {'email': 'fresh@example.com', 'password': 'password'}, format='json')
+
+        self.assertEqual(duplicate.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('email', duplicate.data)
+        self.assertEqual(weak.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('password', weak.data)
+
     def test_candidate_profile_is_owner_scoped_and_created_lazily(self):
         response = self.client.get('/api/profile/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)

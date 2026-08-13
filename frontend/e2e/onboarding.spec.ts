@@ -2,22 +2,15 @@ import { expect, test } from '@playwright/test';
 
 test('fresh user builds an actionable candidate profile with the onboarding agent', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'The complete onboarding mutation flow runs once; responsive rendering is covered separately.');
-  await page.goto('/login');
-  await page.getByLabel('Username').fill('admin');
-  await page.getByLabel('Password').fill('adminpass');
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.goto('/signup');
+  await page.getByLabel('Email address').fill(`onboarding.${Date.now()}@example.com`);
+  await page.getByLabel('Password', { exact: true }).fill('Build-My-Career-Profile-2026');
+  await page.getByLabel('Confirm password').fill('Build-My-Career-Profile-2026');
+  await page.getByRole('button', { name: /Create workspace/ }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 
   const dialog = page.getByRole('dialog');
-  if (!(await dialog.isVisible({ timeout: 3_000 }).catch(() => false))) {
-    const profile = await page.evaluate(async () => {
-      const token = localStorage.getItem('forth_access');
-      return fetch('/api/profile/onboarding/', { headers: { Authorization: `Bearer ${token}` } }).then((response) => response.json());
-    });
-    expect(profile.needs_onboarding).toBeFalsy();
-    return;
-  }
-
+  await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('heading', { name: 'Meet your Profile Steward' })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('onboarding-welcome-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });

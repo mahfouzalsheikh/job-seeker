@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-from django.db.models import Count, Q
 import mimetypes
 from pathlib import Path
 
 from django.conf import settings
+from django.db import IntegrityError, transaction
+from django.db.models import Count, Q
 from django.http import FileResponse, Http404, HttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
     AgentRun,
@@ -50,6 +52,7 @@ from .serializers import (
     ProfileFactSerializer,
     ResumeSerializer,
     ResumeTailorSerializer,
+    RegistrationSerializer,
     SourceRunSerializer,
 )
 from .services import create_tailored_resume, dashboard, generate_strategy, import_job_posting, ingest_profile_document, recompute_match
@@ -76,6 +79,29 @@ class OwnedViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
+
+
+class RegistrationView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = RegistrationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            with transaction.atomic():
+                user = serializer.save()
+        except IntegrityError:
+            return Response(
+                {'email': ['An account with this email already exists.']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': {'id': user.id, 'email': user.email},
+        }, status=status.HTTP_201_CREATED)
 
 
 class ProfileDocumentViewSet(OwnedViewSet):

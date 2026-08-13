@@ -11,10 +11,13 @@ import { ArtifactsComponent } from './pages/artifacts.component';
 import { SettingsComponent } from './pages/settings.component';
 import { ConciergeComponent } from './pages/concierge.component';
 import { authGuard } from './services/auth.guard';
+import { SignupComponent } from './pages/signup.component';
+import { guestGuard } from './services/guest.guard';
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
-  { path: 'login', component: LoginComponent },
+  { path: 'login', component: LoginComponent, canActivate: [guestGuard] },
+  { path: 'signup', component: SignupComponent, canActivate: [guestGuard] },
   { path: 'dashboard', component: DashboardComponent, canActivate: [authGuard] },
   { path: 'concierge', component: ConciergeComponent, canActivate: [authGuard] },
   { path: 'profile', component: ProfileComponent, canActivate: [authGuard] },

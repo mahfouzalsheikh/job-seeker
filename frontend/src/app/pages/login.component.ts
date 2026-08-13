@@ -1,12 +1,12 @@
 import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <main class="auth-page">
       <section class="auth-story">
@@ -30,8 +30,8 @@ import { AuthService } from '../services/auth.service';
         <p class="auth-subtitle">Pick up where you left off.</p>
         <form (ngSubmit)="login()">
           <label>
-            Username
-            <input name="username" [(ngModel)]="username" autocomplete="username" placeholder="Your username">
+            Email or username
+            <input name="username" [(ngModel)]="username" autocomplete="username" placeholder="you@example.com">
           </label>
           <label>
             Password
@@ -40,13 +40,14 @@ import { AuthService } from '../services/auth.service';
           <button class="btn-primary auth-submit" type="submit" [disabled]="loading">{{ loading ? 'Signing in…' : 'Sign in' }}</button>
           <p class="error" *ngIf="error">{{ error }}</p>
         </form>
+        <p class="auth-switch">New to Forth? <a routerLink="/signup">Create your workspace</a></p>
       </section>
     </main>
   `,
 })
 export class LoginComponent {
-  username = 'admin';
-  password = 'adminpass';
+  username = '';
+  password = '';
   loading = false;
   error = '';
 
@@ -62,7 +63,7 @@ export class LoginComponent {
       },
       error: () => {
         this.loading = false;
-        this.error = 'Login failed. Check the username and password.';
+        this.error = 'Login failed. Check your email or username and password.';
       },
     });
   }
