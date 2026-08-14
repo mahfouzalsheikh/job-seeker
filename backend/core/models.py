@@ -6,7 +6,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
-from pgvector.django import VectorField
+from pgvector.django import HalfVectorField
 
 
 def safe_upload_to(prefix: str, filename: str) -> str:
@@ -52,7 +52,7 @@ class CandidateProfile(models.Model):
     last_reviewed_at = models.DateTimeField(null=True, blank=True)
     onboarding_state = models.JSONField(default=dict, blank=True)
     onboarding_completed_at = models.DateTimeField(null=True, blank=True)
-    semantic_embedding = VectorField(dimensions=1536, null=True, blank=True)
+    semantic_embedding = HalfVectorField(dimensions=3072, null=True, blank=True)
     embedding_model = models.CharField(max_length=120, blank=True)
     embedding_provider = models.CharField(max_length=32, blank=True)
     embedding_content_hash = models.CharField(max_length=64, blank=True, db_index=True)
@@ -175,7 +175,7 @@ class ProfileFact(OwnedModel):
     source_document = models.ForeignKey(ProfileDocument, null=True, blank=True, on_delete=models.SET_NULL, related_name='facts')
     source_chunk = models.ForeignKey(ProfileChunk, null=True, blank=True, on_delete=models.SET_NULL, related_name='facts')
     verified_by_user = models.BooleanField(default=False, db_index=True)
-    semantic_embedding = VectorField(dimensions=1536, null=True, blank=True)
+    semantic_embedding = HalfVectorField(dimensions=3072, null=True, blank=True)
     embedding_model = models.CharField(max_length=120, blank=True)
     embedding_provider = models.CharField(max_length=32, blank=True)
     embedding_content_hash = models.CharField(max_length=64, blank=True, db_index=True)
@@ -271,7 +271,7 @@ class JobPosting(OwnedModel):
     source_url = models.URLField(max_length=1000, blank=True)
     application_url = models.URLField(max_length=1000, blank=True)
     content_hash = models.CharField(max_length=64, blank=True, db_index=True)
-    semantic_embedding = VectorField(dimensions=1536, null=True, blank=True)
+    semantic_embedding = HalfVectorField(dimensions=3072, null=True, blank=True)
     embedding_model = models.CharField(max_length=120, blank=True)
     embedding_provider = models.CharField(max_length=32, blank=True)
     embedding_content_hash = models.CharField(max_length=64, blank=True, db_index=True)

@@ -155,13 +155,13 @@ def openai_client():
 def embedding_dimensions() -> int:
     # The database vector columns are deliberately fixed-width. Changing this
     # setting requires a matching schema migration and a full embedding rebuild.
-    return int(getattr(settings, 'OPENAI_EMBEDDING_DIMENSIONS', 1536))
+    return int(getattr(settings, 'OPENAI_EMBEDDING_DIMENSIONS', 3072))
 
 
 def embed_text_result(text: str) -> EmbeddingResult:
     cleaned = clean_text(text)
     dimensions = embedding_dimensions()
-    model = getattr(settings, 'OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small')
+    model = getattr(settings, 'OPENAI_EMBEDDING_MODEL', 'text-embedding-3-large')
     client = openai_client() if _openai_available() else None
     if client and cleaned:
         try:

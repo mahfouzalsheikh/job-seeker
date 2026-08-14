@@ -21,7 +21,7 @@ The stack intentionally follows the sibling Drawing Algorithms project:
 - Extract profile facts and confirm or correct uncertain claims before activation.
 - Manually import job descriptions or job URLs.
 - Extract structured job metadata.
-- Embed canonical candidate and job profiles with OpenAI `text-embedding-3-small`.
+- Embed canonical candidate and job profiles with OpenAI `text-embedding-3-large`.
 - Search and rank stored jobs with pgvector cosine distance, then compute transparent match scores with evidence and gaps.
 - Generate tailored resume drafts from verified/profile facts and canonical resume content.
 - Review validation notes, weak claims, and unsupported claims.
@@ -135,7 +135,7 @@ The Angular dev server runs on `http://localhost:4200`. For full API access in d
 ## Semantic Search and Matching
 
 Candidate profiles, individual profile facts, and normalized job profiles are stored
-in fixed-width pgvector columns. Embeddings are content-hashed and model-versioned,
+as full-width 3,072-dimensional pgvector `halfvec` values. Embeddings are content-hashed and model-versioned,
 so edits only regenerate stale vectors. PostgreSQL uses cosine distance for candidate
 to-job ranking and nearest-evidence retrieval; the final score remains explainable and
 also includes skills, evidence quality, stated direction, domain, and logistics.
@@ -145,6 +145,9 @@ Rebuild all vectors and matches after changing the embedding model or dimensions
 ```bash
 docker compose exec web python manage.py rebuild_search_embeddings --force
 ```
+
+If a previous rebuild completed candidate facts but not jobs, resume only the job
+portion with `--jobs-only --force`.
 
 The jobs API accepts `semantic_query=<natural language intent>` for vector search.
 

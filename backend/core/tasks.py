@@ -55,7 +55,7 @@ def recompute_all_matches_task(owner_id: int) -> dict:
 @shared_task
 def refresh_profile_search_task(owner_id: int, force: bool = False) -> dict:
     """Refresh candidate/fact vectors, then re-rank every stored opportunity."""
-    from .domain.embeddings import refresh_fact_embedding, refresh_profile_embedding
+    from .domain.embeddings import refresh_fact_embedding, refresh_job_embedding, refresh_profile_embedding
 
     profile = CandidateProfile.objects.select_related('owner').get(owner_id=owner_id)
     publish_user_event(owner_id, 'profile_embedding_started', {'profile_id': profile.id})
@@ -65,14 +65,19 @@ def refresh_profile_search_task(owner_id: int, force: bool = False) -> dict:
         refresh_fact_embedding(fact, force=force)
         embedded_facts += int(force or before != fact.embedding_content_hash)
     refresh_profile_embedding(profile.owner, force=force)
-    matches = recompute_all_matches_task(owner_id)
+    match_count = 0
+    for job in JobPosting.objects.filter(owner_id=owner_id).iterator():
+        refresh_job_embedding(job, force=force)
+        recompute_match(job)
+        match_count += 1
+    publish_user_event(owner_id, 'matches_recomputed', {'count': match_count})
     profile.refresh_from_db()
     payload = {
         'profile_id': profile.id,
         'provider': profile.embedding_provider,
         'model': profile.embedding_model,
         'embedded_facts': embedded_facts,
-        'matches': matches['count'],
+        'matches': match_count,
     }
     publish_user_event(owner_id, 'profile_embedding_finished', payload)
     return payload

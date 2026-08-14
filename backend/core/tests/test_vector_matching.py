@@ -15,7 +15,11 @@ from core.domain.matching import recompute_match
 from core.models import CandidateProfile, JobPosting, JobRequirement, ProfileFact
 
 
-@override_settings(OPENAI_API_KEY='', OPENAI_EMBEDDING_DIMENSIONS=1536)
+@override_settings(
+    OPENAI_API_KEY='',
+    OPENAI_EMBEDDING_MODEL='text-embedding-3-large',
+    OPENAI_EMBEDDING_DIMENSIONS=3072,
+)
 class VectorMatchingTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username='vector-user', password='password')
@@ -67,7 +71,7 @@ class VectorMatchingTests(TestCase):
         self.job.refresh_from_db()
 
         for item in (self.fact, self.profile, self.job):
-            self.assertEqual(len(item.semantic_embedding), 1536)
+            self.assertEqual(len(item.semantic_embedding), 3072)
             self.assertEqual(item.embedding_provider, 'local_fallback')
             self.assertTrue(item.embedding_content_hash)
             self.assertIsNotNone(item.embedding_updated_at)
@@ -99,17 +103,17 @@ class VectorMatchingTests(TestCase):
     def test_openai_embedding_uses_configured_model_and_fixed_dimensions(self, client_factory, _available):
         client = Mock()
         client.embeddings.create.return_value = SimpleNamespace(
-            data=[SimpleNamespace(embedding=[0.25] * 1536)],
+            data=[SimpleNamespace(embedding=[0.25] * 3072)],
         )
         client_factory.return_value = client
 
         result = embed_text_result('Staff platform engineering')
 
         self.assertEqual(result.provider, 'openai')
-        self.assertEqual(result.model, 'text-embedding-3-small')
-        self.assertEqual(len(result.vector), 1536)
+        self.assertEqual(result.model, 'text-embedding-3-large')
+        self.assertEqual(len(result.vector), 3072)
         client.embeddings.create.assert_called_once_with(
-            model='text-embedding-3-small',
+            model='text-embedding-3-large',
             input='Staff platform engineering',
-            dimensions=1536,
+            dimensions=3072,
         )

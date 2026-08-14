@@ -86,8 +86,8 @@ def fact_embedding_text(fact: ProfileFact) -> str:
 
 
 def _desired_hash(text: str) -> str:
-    model = getattr(settings, 'OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small')
-    dimensions = int(getattr(settings, 'OPENAI_EMBEDDING_DIMENSIONS', 1536))
+    model = getattr(settings, 'OPENAI_EMBEDDING_MODEL', 'text-embedding-3-large')
+    dimensions = int(getattr(settings, 'OPENAI_EMBEDDING_DIMENSIONS', 3072))
     return stable_hash(f'{model}:{dimensions}:{text}')
 
 
