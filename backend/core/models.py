@@ -58,6 +58,27 @@ class CandidateProfile(models.Model):
         return self.headline or f'Candidate profile for {self.owner}'
 
 
+class OnboardingResponse(OwnedModel):
+    """Durable, replayable memory for one Profile Steward interview turn."""
+
+    question_id = models.CharField(max_length=120)
+    target = models.CharField(max_length=48, db_index=True)
+    question = models.JSONField(default=dict, blank=True)
+    answer = models.JSONField(default=dict, blank=True)
+    skipped = models.BooleanField(default=False)
+    applied_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+        constraints = [
+            models.UniqueConstraint(fields=['owner', 'question_id'], name='unique_owner_onboarding_question'),
+        ]
+        indexes = [models.Index(fields=['owner', 'target'])]
+
+    def __str__(self) -> str:
+        return f'{self.target}: {self.question_id}'
+
+
 class CandidatePreference(OwnedModel):
     IMPORTANCE_CHOICES = [
         ('must', 'Must have'),

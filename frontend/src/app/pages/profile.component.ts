@@ -43,6 +43,7 @@ import { RealtimeService } from '../services/realtime.service';
           <label>Target industries <span class="field-hint">Comma separated</span><input [(ngModel)]="targetIndustriesText" name="targetIndustries" placeholder="Developer tools, AI platforms"></label>
           <label>Authorized countries <span class="field-hint">Comma separated</span><input [(ngModel)]="authorizedCountriesText" name="authorizedCountries" placeholder="Canada"></label>
           <label>Work modes <span class="field-hint">Comma separated</span><input [(ngModel)]="workModesText" name="workModes" placeholder="remote, hybrid"></label>
+          <label>Employment types <span class="field-hint">Comma separated</span><input [(ngModel)]="employmentTypesText" name="employmentTypes" placeholder="full-time, contract"></label>
           <label>Minimum compensation<input type="number" [(ngModel)]="profile.minimum_compensation" name="minimumCompensation" placeholder="150000"></label>
           <label>Currency<select [(ngModel)]="profile.compensation_currency" name="compensationCurrency"><option>CAD</option><option>USD</option><option>EUR</option><option>GBP</option></select></label>
         </div>
@@ -182,6 +183,7 @@ export class ProfileComponent implements OnInit, OnDestroy {
   targetIndustriesText = '';
   authorizedCountriesText = '';
   workModesText = '';
+  employmentTypesText = '';
   newPreference: Partial<CandidatePreference> = { category: 'role', importance: 'strong', label: '', value: {}, verified_by_user: true };
   editingFactId: number | null = null;
   factDraft: Partial<ProfileFact> = {};
@@ -206,6 +208,7 @@ export class ProfileComponent implements OnInit, OnDestroy {
       if (['profile_ingestion_finished', 'profile_fact_updated', 'profile_fact_deleted'].includes(event.type)) {
         this.load();
       }
+      if (event.type === 'candidate_onboarding_updated') this.load();
     });
   }
 
@@ -220,6 +223,7 @@ export class ProfileComponent implements OnInit, OnDestroy {
       this.targetIndustriesText = profile.target_industries.join(', ');
       this.authorizedCountriesText = profile.authorized_countries.join(', ');
       this.workModesText = profile.work_modes.join(', ');
+      this.employmentTypesText = profile.employment_types.join(', ');
     });
     this.api.preferences().subscribe((page) => this.preferences = page.results);
     this.api.documents().subscribe((page) => this.documents = page.results);
@@ -246,15 +250,27 @@ export class ProfileComponent implements OnInit, OnDestroy {
     if (!this.profile) return;
     this.savingProfile = true;
     const payload = {
-      ...this.profile,
+      base_updated_at: this.profile.updated_at,
+      headline: this.profile.headline,
+      professional_summary: this.profile.professional_summary,
+      location: this.profile.location,
+      minimum_compensation: this.profile.minimum_compensation,
+      compensation_currency: this.profile.compensation_currency,
       target_roles: this.values(this.targetRolesText),
       target_industries: this.values(this.targetIndustriesText),
       authorized_countries: this.values(this.authorizedCountriesText),
       work_modes: this.values(this.workModesText).map((value) => value.toLowerCase()),
+      employment_types: this.values(this.employmentTypesText).map((value) => value.toLowerCase()),
     };
     this.api.updateCandidateProfile(payload).subscribe({
       next: (profile) => { this.profile = profile; this.message = 'Search brief saved.'; this.savingProfile = false; },
-      error: () => { this.message = 'Could not save the search brief.'; this.savingProfile = false; },
+      error: (response) => {
+        this.message = response?.status === 409
+          ? 'Your Profile Steward saved newer answers while this page was open. I kept those answers and refreshed the page.'
+          : 'Could not save the search brief.';
+        this.savingProfile = false;
+        if (response?.status === 409) this.load();
+      },
     });
   }
 

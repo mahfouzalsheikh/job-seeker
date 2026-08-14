@@ -5,10 +5,23 @@ import json
 import math
 import os
 import re
+import time
 from dataclasses import dataclass
 from typing import Any
 
 from django.conf import settings
+
+
+_OPENAI_BACKOFF_UNTIL = 0.0
+
+
+def _openai_available() -> bool:
+    return time.monotonic() >= _OPENAI_BACKOFF_UNTIL
+
+
+def _back_off_openai() -> None:
+    global _OPENAI_BACKOFF_UNTIL
+    _OPENAI_BACKOFF_UNTIL = time.monotonic() + 60
 
 
 SKILL_HINTS = [
@@ -134,7 +147,7 @@ def openai_client():
 
 def embed_text(text: str) -> list[float]:
     cleaned = clean_text(text)
-    client = openai_client()
+    client = openai_client() if _openai_available() else None
     if client and cleaned:
         try:
             response = client.embeddings.create(
@@ -143,12 +156,12 @@ def embed_text(text: str) -> list[float]:
             )
             return [float(value) for value in response.data[0].embedding]
         except Exception:
-            pass
+            _back_off_openai()
     return heuristic_embedding(cleaned)
 
 
 def generate_json(system: str, user: str, schema: dict[str, Any] | None = None) -> AIResult | None:
-    client = openai_client()
+    client = openai_client() if _openai_available() else None
     if not client:
         return None
     try:
@@ -173,6 +186,7 @@ def generate_json(system: str, user: str, schema: dict[str, Any] | None = None) 
             raw = response.output[0].content[0].text
         return AIResult(data=json.loads(raw), source='openai')
     except Exception:
+        _back_off_openai()
         return None
 
 
@@ -233,6 +247,166 @@ def extract_profile_facts(text: str, *, title: str = '') -> AIResult:
         if len(facts) >= 25:
             break
     return AIResult(data={'facts': facts[:40]}, source='heuristic')
+
+
+def analyze_candidate_resume(text: str, *, title: str = '') -> AIResult:
+    """Turn a resume into evidence plus the uncertainties worth discussing.
+
+    This is deliberately separate from generic profile-fact extraction: onboarding
+    needs to know not just what a document says, but what is unclear enough to ask
+    the candidate about.
+    """
+    cleaned = clean_text(text)
+    schema = {
+        'name': 'candidate_resume_analysis',
+        'schema': {
+            'type': 'object',
+            'additionalProperties': False,
+            'properties': {
+                'overview': {'type': 'string'},
+                'career_headline': {'type': 'string'},
+                'likely_location': {'type': 'string'},
+                'likely_industries': {'type': 'array', 'items': {'type': 'string'}},
+                'facts': {
+                    'type': 'array',
+                    'items': {
+                        'type': 'object',
+                        'additionalProperties': False,
+                        'properties': {
+                            'fact_type': {
+                                'type': 'string',
+                                'enum': ['skill', 'achievement', 'role', 'project', 'metric', 'education'],
+                            },
+                            'title': {'type': 'string'},
+                            'statement': {'type': 'string'},
+                            'evidence_quote': {'type': 'string'},
+                            'confidence': {'type': 'string', 'enum': ['high', 'medium', 'low']},
+                            'ambiguous': {'type': 'boolean'},
+                            'ambiguity_reason': {'type': 'string'},
+                        },
+                        'required': [
+                            'fact_type', 'title', 'statement', 'evidence_quote',
+                            'confidence', 'ambiguous', 'ambiguity_reason',
+                        ],
+                    },
+                },
+            },
+            'required': [
+                'overview', 'career_headline', 'likely_location',
+                'likely_industries', 'facts',
+            ],
+        },
+    }
+    generated = generate_json(
+        (
+            'You are a meticulous candidate-profile analyst. Read the resume as evidence, not marketing copy. '
+            'Extract chronology, roles, education, skills, projects, scope, metrics, and achievements without '
+            'inventing anything. Preserve a short exact evidence quote for every fact. Mark a fact ambiguous only '
+            'when its meaning, ownership, date, scope, metric, employer, or proficiency genuinely needs candidate '
+            'confirmation. Keep at most four high-value ambiguities; do not ask the candidate to reconfirm clear text. '
+            'The career headline and location are tentative observations, never assumed future preferences.'
+        ),
+        f'Resume filename: {title}\n\nResume text:\n{cleaned[:24000]}',
+        schema,
+    )
+    if generated:
+        return generated
+
+    extracted = extract_profile_facts(text, title=title)
+    facts = []
+    for raw in extracted.data.get('facts', []):
+        statement = clean_text(raw.get('statement', ''))
+        if not statement:
+            continue
+        facts.append({
+            'fact_type': raw.get('fact_type', 'achievement'),
+            'title': clean_text(raw.get('title', '')) or statement[:80],
+            'statement': statement,
+            'evidence_quote': statement,
+            'confidence': raw.get('confidence', 'medium'),
+            'ambiguous': False,
+            'ambiguity_reason': '',
+        })
+    role = next((fact['title'] for fact in facts if fact['fact_type'] == 'role'), '')
+    return AIResult(
+        data={
+            'overview': f'Imported {len(facts)} career signals from the current resume.',
+            'career_headline': role,
+            'likely_location': '',
+            'likely_industries': [],
+            'facts': facts[:50],
+        },
+        source='heuristic',
+    )
+
+
+def plan_onboarding_question(context: dict[str, Any]) -> AIResult | None:
+    """Assess the candidate and ask the single highest-value missing question."""
+    targets = [
+        'headline', 'target_roles', 'target_industries', 'location',
+        'authorized_countries', 'work_modes', 'employment_types',
+        'minimum_compensation', 'experience', 'skill', 'achievement', 'education',
+        'soft_skills', 'hobbies', 'preference_ideal', 'preference_avoid',
+        'professional_summary', 'fact_confirmation',
+    ]
+    schema = {
+        'name': 'candidate_onboarding_question',
+        'schema': {
+            'type': 'object',
+            'additionalProperties': False,
+            'properties': {
+                'complete': {'type': 'boolean'},
+                'question': {
+                    'type': 'object',
+                    'additionalProperties': False,
+                    'properties': {
+                        'target': {'type': 'string', 'enum': targets},
+                        'kind': {
+                            'type': 'string',
+                            'enum': ['text', 'textarea', 'tags', 'single_choice', 'multi_choice', 'number', 'confirm'],
+                        },
+                        'title': {'type': 'string'},
+                        'prompt': {'type': 'string'},
+                        'why': {'type': 'string'},
+                        'placeholder': {'type': 'string'},
+                        'prefill': {'type': 'string'},
+                        'options': {'type': 'array', 'items': {'type': 'string'}},
+                        'suggestions': {'type': 'array', 'items': {'type': 'string'}},
+                        'suggestion_reason': {'type': 'string'},
+                        'required': {'type': 'boolean'},
+                        'fact_id': {'type': 'integer'},
+                    },
+                    'required': [
+                        'target', 'kind', 'title', 'prompt', 'why', 'placeholder',
+                        'prefill', 'options', 'suggestions', 'suggestion_reason',
+                        'required', 'fact_id',
+                    ],
+                },
+            },
+            'required': ['complete', 'question'],
+        },
+    }
+    generated = generate_json(
+        (
+            'You are Forth\'s Profile Steward: a rigorous, adaptive candidate-profile interviewer. Reassess the entire '
+            'profile after every answer and ask exactly one concise, highest-information question. Use the resume '
+            'analysis, extracted evidence, saved interview history, answered targets, and current assessment. Never '
+            'repeat a resolved question. Prioritize unresolved ambiguity first, then hard eligibility and career intent, '
+            'then missing experience/impact/capabilities/education, then work preferences, people strengths, and useful '
+            'personal interests. Use fact_confirmation only with an unresolved fact_id supplied in context. Choose the '
+            'lowest-friction UI kind. Propose an editable answer for every question: provide one or more suggestions and '
+            'a short suggestion_reason grounded in resume/profile evidence when possible; when the evidence cannot '
+            'determine a personal choice, clearly label the suggestions as starting points rather than facts. Put the '
+            'best supported draft in prefill. For choices, provide 3-8 short options and identify likely selections in '
+            'suggestions. Never invent authorization, compensation, metrics, dates, employers, credentials, or personal '
+            'preferences. Explain why the answer improves sourcing, matching, or truthful document generation. Return '
+            'complete only when the supplied assessment says the profile is ready, its confidence gate is met, and no '
+            'ambiguity remains.'
+        ),
+        json.dumps(context, ensure_ascii=False, default=str)[:28000],
+        schema,
+    )
+    return generated
 
 
 def extract_job(text: str, *, source_url: str = '') -> AIResult:

@@ -76,6 +76,8 @@ class RegistrationSerializer(serializers.Serializer):
 
 
 class ProfileDocumentSerializer(serializers.ModelSerializer):
+    RESUME_EXTENSIONS = {'.pdf', '.doc', '.docx', '.html', '.htm', '.txt', '.md', '.rtf', '.odt'}
+
     class Meta:
         model = ProfileDocument
         fields = [
@@ -83,6 +85,25 @@ class ProfileDocumentSerializer(serializers.ModelSerializer):
             'metadata', 'created_at', 'updated_at',
         ]
         read_only_fields = ['status', 'status_message', 'metadata', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if attrs.get('kind', getattr(self.instance, 'kind', 'note')) != 'resume':
+            return attrs
+        upload = attrs.get('upload')
+        raw_text = str(attrs.get('raw_text', '') or '').strip()
+        if not upload and not raw_text:
+            raise serializers.ValidationError({'upload': 'Upload your current resume or paste its text.'})
+        if upload:
+            from pathlib import Path
+
+            suffix = Path(upload.name).suffix.lower()
+            if suffix not in self.RESUME_EXTENSIONS:
+                supported = ', '.join(sorted(self.RESUME_EXTENSIONS))
+                raise serializers.ValidationError({'upload': f'Unsupported resume format. Use one of: {supported}.'})
+            if upload.size > 15 * 1024 * 1024:
+                raise serializers.ValidationError({'upload': 'Resume files must be 15 MB or smaller.'})
+        return attrs
 
 
 class ProfileChunkSerializer(serializers.ModelSerializer):

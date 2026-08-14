@@ -22,6 +22,7 @@ from .models import (
     ApprovalRequest,
     Artifact,
     CandidatePreference,
+    CandidateProfile,
     ConversationThread,
     CoverLetter,
     JobMatch,
@@ -137,14 +138,27 @@ class CandidateProfileView(APIView):
         return Response(CandidateProfileSerializer(self.get_object(request)).data)
 
     def patch(self, request):
-        profile = self.get_object(request)
-        serializer = CandidateProfileSerializer(profile, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(last_reviewed_at=timezone.now())
-        from .domain.profiles import compute_profile_completeness
+        from django.utils.dateparse import parse_datetime
 
-        compute_profile_completeness(request.user)
-        profile.refresh_from_db()
+        payload = request.data.copy()
+        base_updated_at = payload.pop('base_updated_at', None)
+        if isinstance(base_updated_at, list):
+            base_updated_at = base_updated_at[0] if base_updated_at else None
+        with transaction.atomic():
+            profile = CandidateProfile.objects.select_for_update().filter(owner=request.user).first() or self.get_object(request)
+            expected = parse_datetime(str(base_updated_at)) if base_updated_at else None
+            if expected and profile.updated_at > expected:
+                return Response(
+                    {'detail': 'Your profile changed after this screen loaded. I kept the newer answers; refresh before saving edits.'},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            serializer = CandidateProfileSerializer(profile, data=payload, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save(last_reviewed_at=timezone.now())
+            from .domain.profiles import compute_profile_completeness
+
+            compute_profile_completeness(request.user)
+            profile.refresh_from_db()
         publish_user_event(request.user.id, 'candidate_profile_updated', {'profile_id': profile.id})
         return Response(CandidateProfileSerializer(profile).data)
 

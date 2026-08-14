@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, OnDestroy, OnInit, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ApiService, OnboardingSnapshot } from '../services/api.service';
+import { ApiService, OnboardingQuestion, OnboardingSnapshot } from '../services/api.service';
 
 @Component({
   selector: 'app-onboarding-wizard',
@@ -16,87 +16,85 @@ import { ApiService, OnboardingSnapshot } from '../services/api.service';
           <div class="steward-orb">P</div>
           <p class="eyebrow">Profile Steward</p>
           <h2>Your career context, assembled with you.</h2>
-          <p>I’ll ask only what the evidence cannot tell me, then hand a ready-to-use profile to the rest of your specialist team.</p>
-          <div class="agent-progress" *ngIf="snapshot"><div><span>Profile readiness</span><strong>{{ snapshot.readiness.score }}%</strong></div><i><b [style.width.%]="snapshot.progress"></b></i></div>
+          <p>I read the evidence first, then choose the next question from what is missing or unclear—not from a fixed script.</p>
+          <div class="agent-progress" *ngIf="snapshot"><div><span>Profile confidence</span><strong>{{ snapshot.assessment.confidence }}%</strong></div><i><b [style.width.%]="snapshot.progress"></b></i></div>
           <div class="agent-memory" *ngIf="snapshot"><span><b>{{ snapshot.stats.facts }}</b> facts</span><span><b>{{ snapshot.stats.skills }}</b> skills</span><span><b>{{ snapshot.stats.achievements }}</b> wins</span></div>
-          <div class="agent-trust"><span>✓</span><p><strong>You approve the truth.</strong> I never invent career facts.</p></div>
+          <div class="resume-memory" *ngIf="snapshot?.resume?.analysis?.overview"><small>CURRENT RESUME</small><p>{{ snapshot?.resume?.analysis?.overview }}</p></div>
+          <div class="agent-trust"><span>✓</span><p><strong>You approve the truth.</strong> Ambiguous claims always come back to you.</p></div>
         </aside>
 
         <main class="onboarding-conversation">
           <header>
-            <div><span class="mobile-agent">P</span><div><small>PROFILE STEWARD</small><strong>{{ working ? 'Working on your profile…' : 'Ready' }}</strong></div></div>
+            <div><span class="mobile-agent">P</span><div><small>PROFILE STEWARD</small><strong>{{ working ? workingLabel : 'Adaptive interview ready' }}</strong></div></div>
             <button type="button" class="onboarding-close" (click)="close()" aria-label="Finish onboarding later">×</button>
           </header>
 
-          <div class="onboarding-loading" *ngIf="loading"><span class="thinking-dots"><i></i><i></i><i></i></span><p>Reading your workspace and choosing the next useful question…</p></div>
+          <div class="onboarding-loading" *ngIf="loading"><span class="thinking-dots"><i></i><i></i><i></i></span><p>Reviewing your evidence and choosing the next useful question…</p></div>
 
           <div class="question-stage" *ngIf="snapshot && !loading">
             <div class="agent-question">
               <span class="question-avatar">P</span>
-              <div><small>Profile Steward</small><h1 id="onboarding-title">{{ snapshot.step.title }}</h1><p>{{ snapshot.step.prompt }}</p></div>
+              <div><small>Profile Steward <ng-container *ngIf="step === 'interview'">· Question {{ snapshot.interview.turn }}</ng-container></small><h1 id="onboarding-title">{{ snapshot.step.title }}</h1><p>{{ snapshot.step.prompt }}</p></div>
             </div>
             <p class="wizard-error" role="alert" *ngIf="error">{{ error }}</p>
 
             <section class="answer-card welcome-answer" *ngIf="step === 'welcome'">
-              <div class="outcome-list"><div><span>01</span><p><strong>Bring your evidence</strong><small>Resume, project notes, reviews, or your own answers</small></p></div><div><span>02</span><p><strong>Fill only the gaps</strong><small>Direction, constraints, strengths, impact, and preferences</small></p></div><div><span>03</span><p><strong>Review the signal</strong><small>A reusable profile for sourcing, matching, and documents</small></p></div></div>
-              <button class="btn-primary wizard-primary" type="button" (click)="answer('welcome', {})">Build my candidate profile →</button>
-              <small class="time-note">Usually 6–10 minutes · progress is saved</small>
+              <div class="outcome-list">
+                <div><span>01</span><p><strong>Upload your current resume</strong><small>PDF, Word, HTML, ODT, RTF, Markdown, or text</small></p></div>
+                <div><span>02</span><p><strong>Let the agent find the gaps</strong><small>Questions change with your chronology, evidence, and ambiguity</small></p></div>
+                <div><span>03</span><p><strong>Confirm what matters</strong><small>You resolve uncertainty before the profile becomes actionable</small></p></div>
+              </div>
+              <button class="btn-primary wizard-primary" type="button" (click)="answer('welcome', {})" [disabled]="working">Start with my resume →</button>
+              <small class="time-note">One focused question at a time · progress is saved</small>
             </section>
 
             <section class="answer-card" *ngIf="step === 'source'">
-              <label class="onboarding-file" [class.has-file]="sourceFile"><input type="file" accept=".pdf,.docx,.txt,.md" (change)="onSourceFile($event)"><span class="upload-icon">⇧</span><strong>{{ sourceFile?.name || 'Drop in your current resume' }}</strong><small>PDF, DOCX, TXT, or Markdown · it does not need to be polished</small><em>{{ sourceFile ? 'Choose a different file' : 'Choose file' }}</em></label>
-              <div class="or-line"><span>or paste what you have</span></div>
-              <textarea rows="5" [(ngModel)]="sourceText" placeholder="Paste resume text, a LinkedIn summary, or career notes…"></textarea>
-              <div class="wizard-actions"><button class="btn-primary" type="button" (click)="uploadSource()" [disabled]="working || (!sourceFile && !sourceText.trim())"><span class="spinner" *ngIf="working"></span>{{ working ? 'Uploading…' : 'Read my career history →' }}</button><button class="text-button" type="button" (click)="answer('source', { skip: true })" [disabled]="working">I’ll answer from scratch</button></div>
+              <label class="onboarding-file" [class.has-file]="sourceFile" (dragover)="allowDrop($event)" (drop)="onDrop($event)">
+                <input type="file" accept=".pdf,.doc,.docx,.html,.htm,.odt,.rtf,.txt,.md" (change)="onSourceFile($event)">
+                <span class="upload-icon">⇧</span><strong>{{ sourceFile?.name || 'Upload your current resume' }}</strong>
+                <small>PDF, Word, HTML, ODT, RTF, TXT, or Markdown · up to 15 MB</small>
+                <em>{{ sourceFile ? readableSize(sourceFile.size) + ' · Choose a different file' : 'Choose file or drop it here' }}</em>
+              </label>
+              <div class="source-error" *ngIf="snapshot.resume?.status === 'failed'"><strong>I could not finish that resume.</strong><span>{{ snapshot.resume?.message }}</span></div>
+              <div class="or-line"><span>or paste the current resume</span></div>
+              <textarea rows="5" [(ngModel)]="sourceText" placeholder="Paste the full resume text here…"></textarea>
+              <button class="btn-primary wizard-primary" type="button" (click)="uploadSource()" [disabled]="working || (!sourceFile && !sourceText.trim())"><span class="spinner" *ngIf="working"></span>{{ working ? 'Uploading your resume…' : 'Analyze my resume →' }}</button>
+              <small class="privacy-note">Your resume becomes private profile evidence. Forth does not make unclear claims true.</small>
             </section>
 
             <section class="answer-card processing-answer" *ngIf="step === 'source_processing'">
               <div class="document-reading"><span>CV</span><div><i></i><i></i><i></i><i></i></div></div>
-              <h3>Turning your document into reusable evidence</h3><p>Roles, skills, achievements, education, and dates are being separated into facts. I’ll ask about anything important that is still missing.</p>
-              <div class="processing-status"><span class="spinner"></span> Extracting and organizing your profile…</div>
+              <h3>Reading evidence, not just keywords</h3>
+              <p>I’m mapping roles, dates, education, capabilities, projects, scope, and measurable impact—then separating clear facts from details that need you.</p>
+              <div class="analysis-steps"><span class="done">✓ Text extracted</span><span class="active"><i class="spinner"></i> Career evidence analysis</span><span>○ Dynamic question planning</span></div>
             </section>
 
-            <section class="answer-card" *ngIf="step === 'direction'">
-              <label>Your professional headline<input [(ngModel)]="headline" placeholder="e.g. Product-minded Staff Engineer building reliable AI platforms"></label>
-              <label>Roles you want next <span>Comma separated</span><input [(ngModel)]="rolesText" placeholder="Staff Engineer, Engineering Lead"></label>
-              <label>Industries or domains <span>Optional</span><input [(ngModel)]="industriesText" placeholder="Developer tools, AI infrastructure, fintech"></label>
-              <button class="btn-primary wizard-primary" type="button" (click)="submitDirection()" [disabled]="working">Continue →</button>
-            </section>
+            <section class="answer-card dynamic-answer" *ngIf="step === 'interview' && question" [attr.data-question-target]="question.target" [attr.data-question-id]="question.id">
+              <div class="resume-evidence" *ngIf="question.evidence"><small>WHAT YOUR RESUME SAYS</small><blockquote>{{ question.evidence }}</blockquote></div>
+              <div class="answer-proposal" *ngIf="question.suggestions.length">
+                <div><span>✦</span><p><strong>Profile Steward's draft</strong>{{ question.suggestion_reason }}</p></div>
+                <div class="proposal-list"><button type="button" *ngFor="let suggestion of question.suggestions" (click)="applySuggestion(suggestion)">{{ suggestion }}<small>Use or edit</small></button></div>
+              </div>
 
-            <section class="answer-card" *ngIf="step === 'logistics'">
-              <div class="answer-grid"><label>Current location<input [(ngModel)]="location" placeholder="Toronto, Canada"></label><label>Authorized to work in <span>Comma separated</span><input [(ngModel)]="countriesText" placeholder="Canada, United States"></label></div>
-              <fieldset><legend>Preferred work modes</legend><div class="choice-chips"><button type="button" *ngFor="let option of workModeOptions" [class.selected]="workModes.includes(option.value)" (click)="toggle(workModes, option.value)"><span>{{ option.icon }}</span>{{ option.label }}</button></div></fieldset>
-              <fieldset><legend>Employment types</legend><div class="choice-chips compact"><button type="button" *ngFor="let option of employmentOptions" [class.selected]="employmentTypes.includes(option)" (click)="toggle(employmentTypes, option)">{{ option }}</button></div></fieldset>
-              <div class="answer-grid"><label>Minimum compensation <span>Optional</span><input type="number" [(ngModel)]="minimumCompensation" placeholder="150000"></label><label>Currency<select [(ngModel)]="currency"><option>CAD</option><option>USD</option><option>EUR</option><option>GBP</option></select></label></div>
-              <button class="btn-primary wizard-primary" type="button" (click)="submitLogistics()" [disabled]="working">Save my boundaries →</button>
-            </section>
+              <label *ngIf="question.kind === 'text' || question.kind === 'tags' || question.kind === 'number'">
+                Your answer <span *ngIf="question.kind === 'tags'">Comma separated</span>
+                <input [type]="question.kind === 'number' ? 'number' : 'text'" [(ngModel)]="answerText" [placeholder]="question.placeholder" (keydown.enter)="submitOnEnter($event)">
+              </label>
+              <label *ngIf="question.kind === 'textarea' || question.kind === 'confirm'">
+                {{ question.kind === 'confirm' ? 'Confirm or correct this claim' : 'Your answer' }}
+                <textarea [rows]="question.kind === 'confirm' ? 5 : 7" [(ngModel)]="answerText" [placeholder]="question.placeholder"></textarea>
+              </label>
+              <fieldset *ngIf="question.kind === 'single_choice' || question.kind === 'multi_choice'">
+                <legend>Choose {{ question.kind === 'multi_choice' ? 'all that apply' : 'one option' }}</legend>
+                <div class="choice-chips dynamic-choices"><button type="button" *ngFor="let option of question.options" [class.selected]="choiceValues.includes(option)" (click)="choose(option)"><span>{{ choiceValues.includes(option) ? '✓' : '+' }}</span>{{ option }}</button></div>
+                <div class="custom-choice"><input [(ngModel)]="customChoiceText" placeholder="Add or edit your own answer"><button type="button" (click)="addCustomChoice()" [disabled]="!customChoiceText.trim()">Add</button></div>
+              </fieldset>
 
-            <section class="answer-card" *ngIf="step === 'strengths'">
-              <label>Core skills and capabilities <span>Comma separated</span><input [(ngModel)]="skillsText" placeholder="Platform architecture, Python, technical leadership"></label>
-              <label>What are you trusted to do especially well?<textarea rows="5" [(ngModel)]="capability" placeholder="Describe the kind of problems people bring to you and how you approach them…"></textarea></label>
-              <div class="prompt-hint"><span>✦</span> Think beyond tools: leadership, judgment, communication, domain knowledge, and ways of working count.</div>
-              <button class="btn-primary wizard-primary" type="button" (click)="submitStrengths()" [disabled]="working">Add these strengths →</button>
-            </section>
-
-            <section class="answer-card" *ngIf="step === 'impact'">
-              <label>Name this accomplishment<input [(ngModel)]="impactTitle" placeholder="e.g. Cut deployment recovery time by 40%"></label>
-              <label>What was the situation, what did you do, and what changed?<textarea rows="7" [(ngModel)]="impactStory" placeholder="Include scale, constraints, collaborators, and a measurable result when you can…"></textarea></label>
-              <div class="prompt-hint"><span>✦</span> One concrete story gives matching and resume generation more signal than ten generic responsibilities.</div>
-              <button class="btn-primary wizard-primary" type="button" (click)="submitImpact()" [disabled]="working">Save this proof point →</button>
-            </section>
-
-            <section class="answer-card" *ngIf="step === 'preferences'">
-              <fieldset><legend>I do my best work when…</legend><div class="choice-chips text"><button type="button" *ngFor="let option of idealOptions" [class.selected]="idealPreferences.includes(option)" (click)="toggle(idealPreferences, option)">{{ option }}</button></div></fieldset>
-              <label>Add another positive signal<input [(ngModel)]="customIdeal" placeholder="e.g. The team values written decision-making"></label>
-              <fieldset><legend>I want to avoid…</legend><div class="choice-chips text avoid"><button type="button" *ngFor="let option of avoidOptions" [class.selected]="avoidPreferences.includes(option)" (click)="toggle(avoidPreferences, option)">{{ option }}</button></div></fieldset>
-              <label>Add another boundary<input [(ngModel)]="customAvoid" placeholder="e.g. Roles with more than 25% travel"></label>
-              <button class="btn-primary wizard-primary" type="button" (click)="submitPreferences()" [disabled]="working">Use these preferences →</button>
-            </section>
-
-            <section class="answer-card" *ngIf="step === 'summary'">
-              <div class="draft-label"><span>✦</span><p><strong>I drafted this from what you told me.</strong><small>Make sure the emphasis sounds like you.</small></p></div>
-              <label>Your professional through-line<textarea rows="9" [(ngModel)]="professionalSummary"></textarea></label>
-              <button class="btn-primary wizard-primary" type="button" (click)="submitSummary()" [disabled]="working">This represents me →</button>
+              <div class="question-why"><span>✦</span><p><strong>Why I’m asking</strong>{{ question.why }}</p></div>
+              <div class="wizard-actions dynamic-actions">
+                <button class="btn-primary" type="button" (click)="submitInterview()" [disabled]="working || !hasDynamicAnswer"><span class="spinner" *ngIf="working"></span>{{ working ? 'Updating your profile…' : question.kind === 'confirm' ? 'Confirm & continue →' : 'Save & continue →' }}</button>
+                <button class="text-button" type="button" *ngIf="!question.required" (click)="submitInterview(true)" [disabled]="working">Skip for now</button>
+              </div>
             </section>
 
             <section class="answer-card review-answer" *ngIf="step === 'review'">
@@ -104,12 +102,13 @@ import { ApiService, OnboardingSnapshot } from '../services/api.service';
               <div class="review-copy"><h3>Ready for sourcing and matching</h3><p>{{ snapshot.profile.headline }}</p><div class="review-targets"><span *ngFor="let role of snapshot.profile.target_roles">{{ role }}</span></div></div>
               <div class="readiness-checks"><div *ngFor="let check of checkEntries(snapshot.readiness.checks)" [class.passed]="check[1]"><span>{{ check[1] ? '✓' : '·' }}</span>{{ check[0] }}</div></div>
               <div class="profile-signal"><div><strong>{{ snapshot.stats.facts }}</strong><span>career facts</span></div><div><strong>{{ snapshot.stats.skills }}</strong><span>capabilities</span></div><div><strong>{{ snapshot.stats.achievements }}</strong><span>proof points</span></div><div><strong>{{ snapshot.stats.preferences }}</strong><span>preferences</span></div></div>
+              <div class="ambiguity-clear"><span>✓</span><p><strong>No unresolved resume ambiguity</strong><small>The profile is grounded in your resume and confirmed answers.</small></p></div>
               <button class="btn-primary wizard-primary" type="button" (click)="complete()" [disabled]="working || !snapshot.readiness.ready"><span class="spinner" *ngIf="working"></span>{{ snapshot.needs_onboarding ? 'Activate my job search →' : 'Return to Forth →' }}</button>
               <button class="text-button" type="button" (click)="close()">Review the full profile first</button>
             </section>
           </div>
 
-          <footer *ngIf="snapshot && step !== 'welcome'"><span>Step adapts as your profile grows</span><button type="button" (click)="close()">Finish later</button></footer>
+          <footer *ngIf="snapshot && step !== 'welcome'"><span><b class="agent-live"></b>{{ step === 'interview' ? 'Next question is replanned after every answer' : 'Profile analysis is resumable' }}</span><button type="button" (click)="close()">Finish later</button></footer>
         </main>
       </section>
     </div>
@@ -120,75 +119,111 @@ export class OnboardingWizardComponent implements OnInit, OnDestroy {
   snapshot?: OnboardingSnapshot;
   loading = true;
   working = false;
+  workingLabel = 'Working on your profile…';
   error = '';
   sourceFile?: File;
   sourceText = '';
-  headline = '';
-  rolesText = '';
-  industriesText = '';
-  location = '';
-  countriesText = '';
-  workModes: string[] = [];
-  employmentTypes: string[] = ['full-time'];
-  minimumCompensation: number | null = null;
-  currency = 'CAD';
-  skillsText = '';
-  capability = '';
-  impactTitle = '';
-  impactStory = '';
-  idealPreferences: string[] = [];
-  avoidPreferences: string[] = [];
-  customIdeal = '';
-  customAvoid = '';
-  professionalSummary = '';
-  workModeOptions = [{ value: 'remote', label: 'Remote', icon: '⌂' }, { value: 'hybrid', label: 'Hybrid', icon: '◫' }, { value: 'onsite', label: 'On-site', icon: '⌾' }];
-  employmentOptions = ['full-time', 'contract', 'part-time'];
-  idealOptions = ['High ownership', 'Strong mentorship', 'Deep technical work', 'Customer proximity', 'Clear mission', 'Calm collaboration'];
-  avoidOptions = ['Always-on culture', 'Unclear ownership', 'Heavy travel', 'Pure people management'];
+  answerText = '';
+  choiceValues: string[] = [];
+  customChoiceText = '';
   private pollTimer?: number;
-  private lastStep = '';
+  private lastQuestionId = '';
 
   constructor(private api: ApiService) {}
   ngOnInit(): void { this.load(); }
   ngOnDestroy(): void { if (this.pollTimer) window.clearTimeout(this.pollTimer); }
   get step(): string { return this.snapshot?.step.id || ''; }
+  get question(): OnboardingQuestion | undefined { return this.snapshot?.step.question || undefined; }
+  get hasDynamicAnswer(): boolean {
+    if (!this.question) return false;
+    if (this.question.kind === 'single_choice' || this.question.kind === 'multi_choice') return this.choiceValues.length > 0;
+    return Boolean(this.answerText.trim());
+  }
 
   load(): void {
-    this.api.onboarding().subscribe({ next: (snapshot) => { this.snapshot = snapshot; this.loading = false; this.working = false; this.hydrate(snapshot); if (snapshot.step.id === 'source_processing') this.schedulePoll(); }, error: () => { this.error = 'Could not load onboarding. You can finish this from Candidate Profile.'; this.loading = false; } });
+    this.api.onboarding().subscribe({
+      next: (snapshot) => {
+        this.snapshot = snapshot; this.loading = false; this.working = false; this.hydrateQuestion(snapshot);
+        if (snapshot.step.id === 'source_processing') this.schedulePoll();
+      },
+      error: () => { this.error = 'Could not load onboarding. You can finish this from Candidate Profile.'; this.loading = false; this.working = false; },
+    });
   }
 
   answer(step: string, answers: Record<string, any>): void {
-    this.working = true; this.error = '';
-    this.api.answerOnboarding(step, answers).subscribe({ next: (snapshot) => { this.snapshot = snapshot; this.working = false; this.hydrate(snapshot); if (snapshot.step.id === 'source_processing') this.schedulePoll(); }, error: (error) => { this.working = false; this.error = error?.error?.detail || 'I could not save that answer. Please check it and try again.'; } });
+    this.working = true; this.workingLabel = 'Replanning the interview…'; this.error = '';
+    this.api.answerOnboarding(step, answers).subscribe({
+      next: (snapshot) => { this.snapshot = snapshot; this.working = false; this.hydrateQuestion(snapshot); if (snapshot.step.id === 'source_processing') this.schedulePoll(); },
+      error: (error) => { this.working = false; this.error = error?.error?.detail || 'I could not save that answer. Please check it and try again.'; },
+    });
   }
 
   close(): void { sessionStorage.setItem('forth_onboarding_dismissed', '1'); this.closed.emit(); }
-  complete(): void { if (!this.snapshot?.needs_onboarding) { this.close(); return; } this.working = true; this.api.answerOnboarding('complete', {}).subscribe({ next: () => this.close(), error: (error) => { this.working = false; this.error = error?.error?.detail || 'A required profile signal is still missing.'; } }); }
-  onSourceFile(event: Event): void { this.sourceFile = (event.target as HTMLInputElement).files?.[0]; }
+  complete(): void {
+    if (!this.snapshot?.needs_onboarding) { this.close(); return; }
+    this.working = true; this.workingLabel = 'Activating your profile…';
+    this.api.answerOnboarding('complete', {}).subscribe({ next: () => this.close(), error: (error) => { this.working = false; this.error = error?.error?.detail || 'A required profile signal is still missing.'; } });
+  }
+  allowDrop(event: DragEvent): void { event.preventDefault(); }
+  onDrop(event: DragEvent): void { event.preventDefault(); const file = event.dataTransfer?.files?.[0]; if (file) this.setSourceFile(file); }
+  onSourceFile(event: Event): void { const file = (event.target as HTMLInputElement).files?.[0]; if (file) this.setSourceFile(file); }
+  setSourceFile(file: File): void {
+    const allowed = ['pdf', 'doc', 'docx', 'html', 'htm', 'odt', 'rtf', 'txt', 'md'];
+    const extension = file.name.split('.').pop()?.toLowerCase() || '';
+    if (!allowed.includes(extension)) { this.error = 'Use a PDF, Word, HTML, ODT, RTF, text, or Markdown resume.'; this.sourceFile = undefined; return; }
+    if (file.size > 15 * 1024 * 1024) { this.error = 'Choose a resume that is 15 MB or smaller.'; this.sourceFile = undefined; return; }
+    this.error = ''; this.sourceFile = file;
+  }
+  readableSize(size: number): string { return size < 1024 * 1024 ? `${Math.max(1, Math.round(size / 1024))} KB` : `${(size / 1024 / 1024).toFixed(1)} MB`; }
   uploadSource(): void {
     if (!this.sourceFile && !this.sourceText.trim()) return;
-    const form = new FormData(); form.set('kind', 'resume'); form.set('title', this.sourceFile?.name || 'Onboarding career history'); form.set('raw_text', this.sourceText); if (this.sourceFile) form.set('upload', this.sourceFile);
-    this.working = true; this.error = '';
-    this.api.createDocument(form).subscribe({ next: () => this.load(), error: () => { this.working = false; this.error = 'I could not read that source. Try another file or paste the text instead.'; } });
+    const form = new FormData(); form.set('kind', 'resume'); form.set('title', this.sourceFile?.name || 'Pasted current resume'); form.set('raw_text', this.sourceText); if (this.sourceFile) form.set('upload', this.sourceFile);
+    this.working = true; this.workingLabel = 'Uploading your resume…'; this.error = '';
+    this.api.createDocument(form).subscribe({ next: () => this.load(), error: (response) => { this.working = false; this.error = response?.error?.upload?.[0] || 'I could not read that resume. Try another file or paste its text instead.'; } });
   }
 
-  submitDirection(): void { this.answer('direction', { headline: this.headline, target_roles: this.values(this.rolesText), target_industries: this.values(this.industriesText) }); }
-  submitLogistics(): void { this.answer('logistics', { location: this.location, authorized_countries: this.values(this.countriesText), work_modes: this.workModes, employment_types: this.employmentTypes, minimum_compensation: this.minimumCompensation, compensation_currency: this.currency }); }
-  submitStrengths(): void { this.answer('strengths', { skills: this.values(this.skillsText), capability: this.capability }); }
-  submitImpact(): void { this.answer('impact', { title: this.impactTitle, story: this.impactStory }); }
-  submitPreferences(): void { this.answer('preferences', { ideal: [...this.idealPreferences, ...this.values(this.customIdeal)], avoid: [...this.avoidPreferences, ...this.values(this.customAvoid)] }); }
-  submitSummary(): void { this.answer('summary', { professional_summary: this.professionalSummary }); }
-  toggle(values: string[], value: string): void { const index = values.indexOf(value); index >= 0 ? values.splice(index, 1) : values.push(value); }
+  choose(option: string): void {
+    if (!this.question) return;
+    if (this.question.kind === 'single_choice') { this.choiceValues = [option]; return; }
+    const index = this.choiceValues.indexOf(option); index >= 0 ? this.choiceValues.splice(index, 1) : this.choiceValues.push(option);
+  }
+  applySuggestion(suggestion: string): void {
+    if (!this.question) return;
+    if (this.question.kind === 'single_choice' || this.question.kind === 'multi_choice') {
+      if (!this.choiceValues.includes(suggestion)) this.choose(suggestion);
+      return;
+    }
+    if (this.question.kind === 'tags') {
+      this.answerText = Array.from(new Set([...this.values(this.answerText), ...this.values(suggestion)])).join(', ');
+      return;
+    }
+    this.answerText = suggestion;
+  }
+  addCustomChoice(): void {
+    const value = this.customChoiceText.trim();
+    if (!value || !this.question) return;
+    if (this.question.kind === 'single_choice') this.choiceValues = [value];
+    else if (!this.choiceValues.includes(value)) this.choiceValues.push(value);
+    this.customChoiceText = '';
+  }
+  submitOnEnter(event: Event): void { event.preventDefault(); if (this.hasDynamicAnswer && !this.working) this.submitInterview(); }
+  submitInterview(skip = false): void {
+    if (!this.question) return;
+    const choiceQuestion = this.question.kind === 'single_choice' || this.question.kind === 'multi_choice';
+    let value: string | string[] = choiceQuestion ? this.choiceValues : this.answerText;
+    if (this.question.kind === 'tags') value = this.values(this.answerText);
+    this.answer('interview', { question_id: this.question.id, value, skip });
+  }
   values(value: string): string[] { return String(value || '').split(',').map((item) => item.trim()).filter(Boolean); }
   checkEntries(checks: Record<string, boolean>): [string, boolean][] { return Object.entries(checks); }
 
-  private hydrate(snapshot: OnboardingSnapshot): void {
-    if (this.lastStep === snapshot.step.id) return;
-    this.lastStep = snapshot.step.id;
-    const profile = snapshot.profile;
-    if (snapshot.step.id === 'direction') { this.headline = profile.headline; this.rolesText = profile.target_roles.join(', '); this.industriesText = profile.target_industries.join(', '); }
-    if (snapshot.step.id === 'logistics') { this.location = profile.location; this.countriesText = profile.authorized_countries.join(', '); this.workModes = [...profile.work_modes]; this.employmentTypes = profile.employment_types.length ? [...profile.employment_types] : ['full-time']; this.minimumCompensation = profile.minimum_compensation; this.currency = profile.compensation_currency || 'CAD'; }
-    if (snapshot.step.id === 'summary') this.professionalSummary = profile.professional_summary || snapshot.suggested_summary;
+  private hydrateQuestion(snapshot: OnboardingSnapshot): void {
+    const question = snapshot.step.question;
+    if (!question || question.id === this.lastQuestionId) return;
+    this.lastQuestionId = question.id;
+    this.answerText = question.prefill || '';
+    this.choiceValues = question.prefill ? this.values(question.prefill) : [];
+    this.customChoiceText = '';
   }
-  private schedulePoll(): void { if (this.pollTimer) window.clearTimeout(this.pollTimer); this.pollTimer = window.setTimeout(() => this.load(), 1400); }
+  private schedulePoll(): void { if (this.pollTimer) window.clearTimeout(this.pollTimer); this.pollTimer = window.setTimeout(() => this.load(), 1500); }
 }

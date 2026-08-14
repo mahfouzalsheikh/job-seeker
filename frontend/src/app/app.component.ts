@@ -69,7 +69,7 @@ import { OnboardingWizardComponent } from './onboarding/onboarding-wizard.compon
         <div><strong>{{ activeWork[0] }}</strong><small>{{ activeWork.length > 1 ? (activeWork.length - 1) + ' more background task' + (activeWork.length > 2 ? 's' : '') + ' running' : 'You can keep using Forth while this finishes.' }}</small></div>
       </div>
 
-      <app-onboarding-wizard *ngIf="showOnboarding" (closed)="showOnboarding = false"></app-onboarding-wizard>
+      <app-onboarding-wizard *ngIf="showOnboarding" (closed)="closeOnboarding()"></app-onboarding-wizard>
     </div>
 
     <ng-template #authOnly>
@@ -146,10 +146,18 @@ export class AppComponent implements OnInit, OnDestroy {
     this.router.navigate(['/login']);
   }
 
+  closeOnboarding(): void {
+    this.showOnboarding = false;
+  }
+
   private checkOnboarding(): void {
     if (sessionStorage.getItem('forth_onboarding_dismissed') === '1') return;
     this.api.onboarding().subscribe({
-      next: (snapshot) => this.showOnboarding = snapshot.needs_onboarding,
+      next: (snapshot) => {
+        // The request may have started before the candidate dismissed another
+        // in-flight wizard instance. Never let a late response reopen it.
+        this.showOnboarding = sessionStorage.getItem('forth_onboarding_dismissed') !== '1' && snapshot.needs_onboarding;
+      },
       error: () => this.showOnboarding = false,
     });
   }

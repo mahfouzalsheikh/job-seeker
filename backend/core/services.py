@@ -1,8 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+import re
+import shutil
+import subprocess
+import tempfile
+import zipfile
 from datetime import timedelta
+from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree
 
 from django.db import transaction
 from django.db.models import Count, Q
@@ -14,6 +22,7 @@ from .ai import (
     cosine_similarity,
     detect_skills,
     embed_text,
+    analyze_candidate_resume,
     extract_job,
     extract_profile_facts,
     keywords,
@@ -23,6 +32,7 @@ from .ai import (
 from .models import (
     Application,
     Artifact,
+    CandidateProfile,
     JobMatch,
     JobPosting,
     ProfileChunk,
@@ -32,19 +42,103 @@ from .models import (
 )
 
 
+class _ReadableHTMLParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.parts: list[str] = []
+        self.ignored_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {'script', 'style', 'noscript'}:
+            self.ignored_depth += 1
+        elif tag in {'p', 'div', 'li', 'br', 'h1', 'h2', 'h3', 'h4', 'tr'}:
+            self.parts.append('\n')
+
+    def handle_endtag(self, tag):
+        if tag in {'script', 'style', 'noscript'} and self.ignored_depth:
+            self.ignored_depth -= 1
+        elif tag in {'p', 'div', 'li', 'h1', 'h2', 'h3', 'h4', 'tr'}:
+            self.parts.append('\n')
+
+    def handle_data(self, data):
+        if not self.ignored_depth:
+            self.parts.append(data)
+
+
+def _extract_html(path: str) -> str:
+    parser = _ReadableHTMLParser()
+    with open(path, 'r', encoding='utf-8', errors='ignore') as handle:
+        parser.feed(handle.read())
+    return '\n'.join(line.strip() for line in ''.join(parser.parts).splitlines() if line.strip())
+
+
+def _extract_rtf(path: str) -> str:
+    with open(path, 'r', encoding='utf-8', errors='ignore') as handle:
+        content = handle.read()
+    content = re.sub(r"\\'([0-9a-fA-F]{2})", lambda match: bytes.fromhex(match.group(1)).decode('latin-1'), content)
+    content = re.sub(r'\\par[d]?\s*', '\n', content)
+    content = re.sub(r'\\[a-zA-Z]+-?\d*\s?', '', content)
+    return re.sub(r'[{}]', '', content)
+
+
+def _extract_odt(path: str) -> str:
+    with zipfile.ZipFile(path) as archive:
+        root = ElementTree.fromstring(archive.read('content.xml'))
+    return '\n'.join(value.strip() for value in root.itertext() if value.strip())
+
+
+def _ocr_pdf(path: str) -> str:
+    if not shutil.which('pdftoppm') or not shutil.which('tesseract'):
+        return ''
+    with tempfile.TemporaryDirectory(prefix='forth-resume-ocr-') as temp_dir:
+        prefix = str(Path(temp_dir) / 'page')
+        subprocess.run(
+            ['pdftoppm', '-f', '1', '-l', '12', '-r', '180', '-png', path, prefix],
+            check=True,
+            capture_output=True,
+            timeout=90,
+        )
+        pages = []
+        for image_path in sorted(Path(temp_dir).glob('page-*.png')):
+            result = subprocess.run(
+                ['tesseract', str(image_path), 'stdout'],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=45,
+            )
+            pages.append(result.stdout)
+        return '\n\n'.join(pages)
+
+
 def extract_text_from_upload(path: str) -> str:
-    lowered = path.lower()
+    suffix = Path(path).suffix.lower()
     try:
-        if lowered.endswith('.pdf'):
+        if suffix == '.pdf':
             from pypdf import PdfReader
 
             reader = PdfReader(path)
-            return '\n\n'.join(page.extract_text() or '' for page in reader.pages)
-        if lowered.endswith('.docx'):
+            text = '\n\n'.join(page.extract_text() or '' for page in reader.pages)
+            return text if clean_text(text) else _ocr_pdf(path)
+        if suffix == '.docx':
             from docx import Document
 
             doc = Document(path)
-            return '\n'.join(paragraph.text for paragraph in doc.paragraphs)
+            paragraphs = [paragraph.text for paragraph in doc.paragraphs]
+            for table in doc.tables:
+                paragraphs.extend(cell.text for row in table.rows for cell in row.cells)
+            return '\n'.join(paragraphs)
+        if suffix == '.doc':
+            if not shutil.which('antiword'):
+                raise ValueError('Legacy .doc reading is unavailable. Upload DOCX, PDF, or HTML instead.')
+            result = subprocess.run(['antiword', path], check=True, capture_output=True, text=True, timeout=45)
+            return result.stdout
+        if suffix in {'.html', '.htm'}:
+            return _extract_html(path)
+        if suffix == '.rtf':
+            return _extract_rtf(path)
+        if suffix == '.odt':
+            return _extract_odt(path)
         with open(path, 'r', encoding='utf-8', errors='ignore') as handle:
             return handle.read()
     except Exception as exc:
@@ -82,12 +176,17 @@ def ingest_profile_document(document: ProfileDocument) -> dict[str, Any]:
             metadata={'index': index},
         ))
 
-    extracted = extract_profile_facts(text, title=document.title)
+    extracted = (
+        analyze_candidate_resume(text, title=document.title)
+        if document.kind == 'resume'
+        else extract_profile_facts(text, title=document.title)
+    )
     existing_keys = set(
         ProfileFact.objects.filter(owner=document.owner)
         .values_list('fact_type', 'title', 'statement')
     )
     created = 0
+    ambiguity_count = 0
     for raw_fact in extracted.data.get('facts', []):
         statement = clean_text(raw_fact.get('statement', ''))
         title = clean_text(raw_fact.get('title', ''))[:220] or statement[:80] or 'Profile fact'
@@ -97,7 +196,11 @@ def ingest_profile_document(document: ProfileDocument) -> dict[str, Any]:
         key = (fact_type, title, statement)
         if not statement or key in existing_keys:
             continue
-        source_chunk = chunks[0] if chunks else None
+        evidence_quote = clean_text(raw_fact.get('evidence_quote', '')) or statement
+        source_chunk = next((chunk for chunk in chunks if evidence_quote[:80].lower() in chunk.text.lower()), chunks[0] if chunks else None)
+        ambiguous = bool(raw_fact.get('ambiguous')) and ambiguity_count < 5
+        if ambiguous:
+            ambiguity_count += 1
         ProfileFact.objects.create(
             owner=document.owner,
             fact_type=fact_type,
@@ -107,22 +210,47 @@ def ingest_profile_document(document: ProfileDocument) -> dict[str, Any]:
             source_document=document,
             source_chunk=source_chunk,
             embedding=embed_text(f'{title}\n{statement}'),
-            metadata={'extractor': extracted.source},
+            metadata={
+                'extractor': extracted.source,
+                'onboarding_ambiguous': ambiguous,
+                'ambiguity_reason': clean_text(raw_fact.get('ambiguity_reason', '')) if ambiguous else '',
+            },
             lifecycle='proposed',
-            evidence_quote=statement,
+            evidence_quote=evidence_quote,
+            strength='strong' if raw_fact.get('confidence') == 'high' and not ambiguous else 'working',
         )
         existing_keys.add(key)
         created += 1
 
     document.status = 'ready'
     document.status_message = f'Created {created} facts from {len(chunks)} chunks.'
-    document.metadata = {**(document.metadata or {}), 'extractor': extracted.source}
+    document.metadata = {
+        **(document.metadata or {}),
+        'extractor': extracted.source,
+        'resume_analysis': {
+            'overview': clean_text(extracted.data.get('overview', '')),
+            'career_headline': clean_text(extracted.data.get('career_headline', '')),
+            'likely_location': clean_text(extracted.data.get('likely_location', '')),
+            'likely_industries': [clean_text(value) for value in extracted.data.get('likely_industries', []) if clean_text(value)][:12],
+            'ambiguities': ambiguity_count,
+        } if document.kind == 'resume' else {},
+    }
     document.save(update_fields=['status', 'status_message', 'metadata', 'updated_at'])
 
     if document.kind == 'resume':
         ensure_canonical_resume(document)
 
-    from .domain.profiles import compute_profile_completeness
+    from .domain.profiles import candidate_profile, compute_profile_completeness
+
+    if document.kind == 'resume':
+        profile = candidate_profile(document.owner)
+        profile = CandidateProfile.objects.select_for_update().get(pk=profile.pk)
+        state = dict(profile.onboarding_state or {})
+        state.pop('current_question', None)
+        state['resume_document_id'] = document.id
+        state['resume_analyzed_at'] = timezone.now().isoformat()
+        profile.onboarding_state = state
+        profile.save(update_fields=['onboarding_state', 'updated_at'])
 
     compute_profile_completeness(document.owner)
 

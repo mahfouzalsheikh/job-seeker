@@ -1,7 +1,9 @@
+import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
-test('fresh user builds an actionable candidate profile with the onboarding agent', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop', 'The complete onboarding mutation flow runs once; responsive rendering is covered separately.');
+test('resume evidence drives a dynamic interview into an actionable candidate profile', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'The complete adaptive mutation flow runs once; responsive rendering is covered by the app suite.');
+  test.setTimeout(300_000);
   await page.goto('/signup');
   await page.getByLabel('Email address').fill(`onboarding.${Date.now()}@example.com`);
   await page.getByLabel('Password', { exact: true }).fill('Build-My-Career-Profile-2026');
@@ -10,52 +12,87 @@ test('fresh user builds an actionable candidate profile with the onboarding agen
   await expect(page).toHaveURL(/\/dashboard$/);
 
   const dialog = page.getByRole('dialog');
-  await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('heading', { name: 'Meet your Profile Steward' })).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('onboarding-welcome-desktop.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('adaptive-onboarding-welcome.png'), fullPage: true });
+  await dialog.getByRole('button', { name: /Start with my resume/ }).click();
+  await expect(dialog.getByRole('heading', { name: 'Add your current resume' })).toBeVisible();
+  await dialog.locator('input[type="file"]').setInputFiles(path.join(process.cwd(), 'e2e', 'fixtures', 'current-resume.html'));
+  await expect(dialog.getByText('current-resume.html')).toBeVisible();
+  await dialog.getByRole('button', { name: /Analyze my resume/ }).click();
+  await expect(dialog.getByText(/Reading evidence, not just keywords/)).toBeVisible({ timeout: 30_000 });
+  await expect(dialog.locator('.dynamic-answer')).toBeVisible({ timeout: 120_000 });
+  await expect(dialog.getByText(/Next question is replanned after every answer/)).toBeVisible();
+  await expect(dialog.locator('.answer-proposal')).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(dialog).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
-  await page.screenshot({ path: testInfo.outputPath('onboarding-welcome-mobile.png'), fullPage: true });
+  await expect(dialog.locator('.answer-proposal')).toBeVisible();
+  const mobileLayout = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, document: document.documentElement.scrollWidth }));
+  expect(mobileLayout.document).toBeLessThanOrEqual(mobileLayout.viewport + 1);
+  await page.screenshot({ path: testInfo.outputPath('adaptive-onboarding-proposal-mobile.png'), fullPage: true });
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await dialog.getByRole('button', { name: /Build my candidate profile/ }).click();
-  await dialog.getByRole('button', { name: /answer from scratch/i }).click();
 
-  await dialog.getByLabel('Your professional headline').fill('Product-minded platform engineer');
-  await dialog.getByLabel(/Roles you want next/).fill('Staff Platform Engineer, Engineering Lead');
-  await dialog.getByLabel(/Industries or domains/).fill('Developer tools, AI infrastructure');
-  await dialog.getByRole('button', { name: /Continue/ }).click();
+  const textAnswers: Record<string, string> = {
+    target_roles: 'Staff Platform Engineer, Engineering Lead',
+    headline: 'Product-minded platform engineer',
+    location: 'Toronto, Canada',
+    authorized_countries: 'Canada',
+    skill: 'Python, platform architecture, technical leadership',
+    achievement: 'Led a reliability program across four teams and reduced deployment recovery time by 40 percent.',
+    target_industries: 'Developer tools, AI infrastructure',
+    minimum_compensation: '150000',
+    professional_summary: 'Product-minded platform engineer who builds dependable systems, leads pragmatic technical decisions, and improves delivery outcomes across teams.',
+    experience: 'Staff Platform Engineer at Northstar from 2021 to present, leading platform reliability and architecture across four teams.',
+    education: 'Bachelor of Software Engineering, Example University, 2014',
+    soft_skills: 'Technical leadership, clear communication, cross-functional collaboration',
+    hobbies: 'Mentoring, open-source work, distance running',
+  };
+  const preferredChoices: Record<string, RegExp> = {
+    work_modes: /Remote/i,
+    employment_types: /Full-time/i,
+    preference_ideal: /High ownership/i,
+    preference_avoid: /Always-on culture/i,
+  };
 
-  await dialog.getByLabel('Current location').fill('Toronto, Canada');
-  await dialog.getByLabel(/Authorized to work in/).fill('Canada');
-  await dialog.getByRole('button', { name: /Remote/ }).click();
-  await dialog.getByLabel(/Minimum compensation/).fill('150000');
-  await dialog.getByRole('button', { name: /Save my boundaries/ }).click();
+  const seenTargets: string[] = [];
+  for (let turn = 0; turn < 24; turn += 1) {
+    if (await dialog.getByRole('heading', { name: 'Your candidate profile is ready' }).isVisible().catch(() => false)) break;
+    const card = dialog.locator('.dynamic-answer');
+    await expect(card).toBeVisible({ timeout: 120_000 });
+    const target = (await card.getAttribute('data-question-target')) || '';
+    const questionId = await card.getAttribute('data-question-id');
+    seenTargets.push(target);
 
-  await dialog.getByLabel(/Core skills and capabilities/).fill('Python, Platform architecture, Technical leadership');
-  await dialog.getByLabel(/What are you trusted/).fill('Building dependable systems and helping teams make clear, pragmatic technical decisions.');
-  await dialog.getByRole('button', { name: /Add these strengths/ }).click();
-
-  await dialog.getByLabel('Name this accomplishment').fill('Improved deployment recovery');
-  await dialog.getByLabel(/What was the situation/).fill('Led a reliability program across the platform that reduced deployment recovery time by 40 percent and made releases safer for multiple teams.');
-  await dialog.getByRole('button', { name: /Save this proof point/ }).click();
-
-  await dialog.getByRole('button', { name: 'High ownership', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Calm collaboration', exact: true }).click();
-  await dialog.getByRole('button', { name: 'Always-on culture', exact: true }).click();
-  await dialog.getByRole('button', { name: /Use these preferences/ }).click();
-
-  const summary = dialog.getByLabel('Your professional through-line');
-  await expect(summary).not.toHaveValue('');
-  await dialog.getByRole('button', { name: /This represents me/ }).click();
+    const skip = card.getByRole('button', { name: 'Skip for now' });
+    if (['target_industries', 'minimum_compensation', 'preference_avoid'].includes(target) && await skip.isVisible().catch(() => false)) {
+      await skip.click();
+    } else if (await card.locator('.dynamic-choices').isVisible().catch(() => false)) {
+      const preferred = preferredChoices[target];
+      const option = preferred ? card.getByRole('button', { name: preferred }).first() : card.locator('.dynamic-choices button').first();
+      if (!((await option.getAttribute('class')) || '').includes('selected')) await option.click();
+      await card.getByRole('button', { name: /Save & continue/ }).click();
+    } else {
+      const field = card.locator('textarea, input').first();
+      if (target !== 'fact_confirmation') await field.fill(textAnswers[target] || 'Candidate-confirmed answer with enough specific detail to update the profile accurately.');
+      await card.getByRole('button', { name: /continue/ }).click();
+    }
+    await expect(dialog.locator(`.dynamic-answer[data-question-id="${questionId}"]`)).toBeHidden({ timeout: 120_000 });
+    if (turn === 0) {
+      await page.reload();
+      await expect(dialog.locator('.dynamic-answer')).toBeVisible({ timeout: 120_000 });
+      await expect(dialog.locator(`.dynamic-answer[data-question-target="${target}"]`)).toHaveCount(0);
+    }
+  }
 
   await expect(dialog.getByRole('heading', { name: 'Your candidate profile is ready' })).toBeVisible();
+  await expect(dialog.getByText('No unresolved resume ambiguity')).toBeVisible();
   await expect(dialog.locator('.readiness-ring strong')).toHaveText('100%');
-  await page.screenshot({ path: testInfo.outputPath('onboarding-ready.png'), fullPage: true });
+  expect(seenTargets).toContain('target_roles');
+  expect(seenTargets).toContain('authorized_countries');
+  expect(seenTargets).toContain('preference_ideal');
+  await page.screenshot({ path: testInfo.outputPath('adaptive-onboarding-ready.png'), fullPage: true });
   await dialog.getByRole('button', { name: /Activate my job search/ }).click();
   await expect(dialog).toBeHidden();
 
   await page.goto('/profile');
-  await expect(page.getByText('90%', { exact: true })).toBeVisible();
+  await expect(page.getByText('100%', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Professional headline')).toHaveValue('Product-minded platform engineer');
 });

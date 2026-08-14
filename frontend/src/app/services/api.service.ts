@@ -53,16 +53,37 @@ export interface CandidateProfile {
   completeness: number;
   onboarding_state: any;
   onboarding_completed_at: string | null;
+  updated_at: string;
 }
 
 export interface OnboardingSnapshot {
   needs_onboarding: boolean;
-  step: { id: string; title: string; prompt: string };
+  step: { id: string; title: string; prompt: string; question?: OnboardingQuestion | null };
   progress: number;
   readiness: { score: number; ready: boolean; checks: Record<string, boolean>; missing: string[] };
+  assessment: { confidence: number; gate: number; ready: boolean; missing: string[]; rationale: string };
   stats: { documents: number; facts: number; skills: number; achievements: number; preferences: number };
   suggested_summary: string;
   profile: CandidateProfile;
+  resume: { id: number; name: string; status: string; message: string; analysis: any } | null;
+  interview: { turn: number; history: any[]; unresolved_ambiguities: number };
+}
+
+export interface OnboardingQuestion {
+  id: string;
+  target: string;
+  kind: 'text' | 'textarea' | 'tags' | 'single_choice' | 'multi_choice' | 'number' | 'confirm';
+  title: string;
+  prompt: string;
+  why: string;
+  placeholder: string;
+  prefill: string;
+  options: string[];
+  suggestions: string[];
+  suggestion_reason: string;
+  required: boolean;
+  fact_id: number;
+  evidence: string;
 }
 
 export interface CandidatePreference {

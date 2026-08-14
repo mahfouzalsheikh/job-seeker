@@ -16,8 +16,9 @@ The stack intentionally follows the sibling Drawing Algorithms project:
 
 ## MVP Capabilities
 
-- Upload or paste profile material, including a canonical resume.
-- Extract profile facts and verify them.
+- Upload a current PDF, Word, HTML, ODT, RTF, Markdown, or text resume (including OCR for scanned PDFs).
+- Analyze resume evidence with an LLM, surface genuine ambiguity, and run a dynamically planned onboarding interview.
+- Extract profile facts and confirm or correct uncertain claims before activation.
 - Manually import job descriptions or job URLs.
 - Extract structured job metadata.
 - Compute match scores with evidence and gaps.
@@ -49,6 +50,12 @@ Candidate evidence + explicit preferences
 ```
 
 The specialist roles are Profile Steward, Sourcing Scout, Match Analyst, Application Coach, Document Tailor, and Forth Concierge. They are durable workflows over typed Django domain operations—not independent services with private state.
+
+The Profile Steward is evidence-led rather than a fixed wizard. It analyzes the
+candidate's current resume, stores clear claims as proposed evidence, identifies a
+small set of meaningful ambiguities, and replans the next typed question after every
+answer until the candidate's direction, constraints, capabilities, impact, and work
+preferences are ready for use.
 
 ## Local Docker Run
 

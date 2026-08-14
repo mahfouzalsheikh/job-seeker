@@ -100,6 +100,12 @@ class Command(BaseCommand):
                 'excluded_companies': [],
                 'completeness': 90,
                 'last_reviewed_at': timezone.now(),
+                'onboarding_state': {
+                    'started': True,
+                    'answered_targets': ['education', 'soft_skills', 'hobbies', 'preference_avoid'],
+                    'seeded_demo': True,
+                },
+                'onboarding_completed_at': timezone.now(),
             },
         )
         rows = [

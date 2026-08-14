@@ -17,6 +17,7 @@ from .models import (
     JobPostingVersion,
     JobRequirement,
     JobSource,
+    OnboardingResponse,
     ProfileChunk,
     ProfileDocument,
     ProfileFact,
@@ -62,6 +63,7 @@ admin.site.register(ApplicationEvent)
 admin.site.register(Artifact)
 admin.site.register(CandidateProfile)
 admin.site.register(CandidatePreference)
+admin.site.register(OnboardingResponse)
 admin.site.register(SourceRun)
 admin.site.register(JobPostingVersion)
 admin.site.register(JobRequirement)

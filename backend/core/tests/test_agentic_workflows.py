@@ -17,6 +17,7 @@ from core.models import (
     JobPosting,
     JobRequirement,
     JobSource,
+    OnboardingResponse,
     ProfileFact,
     Resume,
     SourceRun,
@@ -192,7 +193,24 @@ class AgenticApiOwnershipTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['target_roles'], ['Platform Engineer'])
 
-    def test_onboarding_agent_adapts_and_builds_a_ready_profile(self):
+    @override_settings(OPENAI_API_KEY='')
+    def test_profile_editor_cannot_overwrite_newer_agent_answers(self):
+        original = self.client.get('/api/profile/').data
+        profile = CandidateProfile.objects.get(owner=self.owner)
+        profile.professional_summary = 'A newly saved adaptive interview answer with enough detail to remain authoritative.'
+        profile.save()
+
+        stale = self.client.patch('/api/profile/', {
+            'base_updated_at': original['updated_at'],
+            'professional_summary': '',
+        }, format='json')
+
+        self.assertEqual(stale.status_code, status.HTTP_409_CONFLICT)
+        profile.refresh_from_db()
+        self.assertTrue(profile.professional_summary)
+
+    @override_settings(OPENAI_API_KEY='', CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+    def test_onboarding_agent_uses_resume_then_adapts_until_profile_is_ready(self):
         response = self.client.get('/api/profile/onboarding/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['step']['id'], 'welcome')
@@ -203,38 +221,61 @@ class AgenticApiOwnershipTests(APITestCase):
             return result
 
         self.assertEqual(answer('welcome').data['step']['id'], 'source')
-        self.assertEqual(answer('source', {'skip': True}).data['step']['id'], 'direction')
-        self.assertEqual(answer('direction', {
+        refused_skip = self.client.post('/api/profile/onboarding/', {'step': 'source', 'answers': {'skip': True}}, format='json')
+        self.assertEqual(refused_skip.status_code, status.HTTP_400_BAD_REQUEST)
+
+        resume = self.client.post('/api/profile/documents/', {
+            'kind': 'resume',
+            'title': 'Current resume.html',
+            'raw_text': (
+                'Senior platform engineer. Built Python and Django services with PostgreSQL and Celery. '
+                'Led a reliability program that reduced deployment recovery time by 40 percent.'
+            ),
+        }, format='json')
+        self.assertEqual(resume.status_code, status.HTTP_201_CREATED, resume.data)
+
+        snapshot = self.client.get('/api/profile/onboarding/').data
+        self.assertEqual(snapshot['step']['id'], 'interview')
+        self.assertIn('overview', snapshot['resume']['analysis'])
+        answered_targets = []
+        values = {
+            'target_roles': ['Staff Platform Engineer', 'Engineering Lead'],
             'headline': 'Product-minded platform engineer',
-            'target_roles': ['Staff Platform Engineer'],
-            'target_industries': ['Developer tools'],
-        }).data['step']['id'], 'logistics')
-        self.assertEqual(answer('logistics', {
             'location': 'Toronto, Canada',
             'authorized_countries': ['Canada'],
-            'work_modes': ['remote', 'hybrid'],
-            'employment_types': ['full-time'],
-            'minimum_compensation': 150000,
-            'compensation_currency': 'CAD',
-        }).data['step']['id'], 'strengths')
-        self.assertEqual(answer('strengths', {
-            'skills': ['Python', 'Platform architecture'],
-            'capability': 'Builds dependable systems and helps teams make sound technical decisions.',
-        }).data['step']['id'], 'impact')
-        self.assertEqual(answer('impact', {
-            'title': 'Improved deployment recovery',
-            'story': 'Led a reliability program that reduced deployment recovery time by 40 percent across the platform.',
-        }).data['step']['id'], 'preferences')
-        self.assertEqual(answer('preferences', {
-            'ideal': ['High ownership', 'Calm collaboration'],
-            'avoid': ['Always-on culture'],
-        }).data['step']['id'], 'summary')
-        review = answer('summary', {
+            'work_modes': ['Remote', 'Hybrid'],
+            'employment_types': ['Full-time'],
+            'target_industries': ['Developer tools', 'AI infrastructure'],
+            'minimum_compensation': '150000',
+            'preference_ideal': ['High ownership', 'Calm collaboration'],
+            'preference_avoid': ['Always-on culture'],
             'professional_summary': 'Product-minded platform engineer who builds dependable systems and helps teams make clear technical decisions.',
-        })
-        self.assertEqual(review.data['step']['id'], 'review')
-        self.assertTrue(review.data['readiness']['ready'])
-        self.assertEqual(review.data['readiness']['score'], 100)
+            'experience': 'Staff Platform Engineer at Northstar from 2021 to present, leading platform architecture and reliability across four teams.',
+            'education': 'Bachelor of Software Engineering, Example University, 2014.',
+            'soft_skills': ['Technical leadership', 'Clear communication'],
+            'hobbies': ['Mentoring', 'Open-source work'],
+            'skill': ['Python', 'Platform architecture'],
+            'achievement': 'Led a reliability program that reduced deployment recovery time by 40 percent across the platform.',
+        }
+        for _ in range(20):
+            if snapshot['step']['id'] == 'review':
+                break
+            question = snapshot['step']['question']
+            target = question['target']
+            answered_targets.append(target)
+            snapshot = answer('interview', {
+                'question_id': question['id'],
+                'value': values[target],
+            }).data
+
+        self.assertEqual(snapshot['step']['id'], 'review')
+        self.assertTrue(snapshot['readiness']['ready'])
+        self.assertEqual(snapshot['readiness']['score'], 100)
+        self.assertIn('target_roles', answered_targets)
+        self.assertIn('authorized_countries', answered_targets)
+        self.assertIn('preference_ideal', answered_targets)
+        self.assertEqual(len([target for target in answered_targets if target != 'fact_confirmation']), len(set(target for target in answered_targets if target != 'fact_confirmation')))
+        self.assertEqual(OnboardingResponse.objects.filter(owner=self.owner).count(), len(answered_targets))
 
         completed = answer('complete')
         self.assertFalse(completed.data['needs_onboarding'])
