@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from celery import shared_task
 
-from .models import AgentRun, JobPosting, JobSource, ProfileDocument, SourceRun
+from .models import AgentRun, CandidateProfile, JobPosting, JobSource, ProfileDocument, ProfileFact, SourceRun
 from .realtime_events import publish_user_event
 from .services import ingest_profile_document, recompute_match
 
@@ -14,6 +14,10 @@ def ingest_profile_document_task(document_id: int) -> dict:
     try:
         result = ingest_profile_document(document)
         publish_user_event(document.owner_id, 'profile_ingestion_finished', {'document_id': document.id, 'status': document.status, **result})
+        try:
+            refresh_profile_search_task.delay(document.owner_id)
+        except Exception:
+            pass
         return result
     except Exception as exc:
         document.status = 'failed'
@@ -46,6 +50,32 @@ def recompute_all_matches_task(owner_id: int) -> dict:
         count += 1
     publish_user_event(owner_id, 'matches_recomputed', {'count': count})
     return {'count': count}
+
+
+@shared_task
+def refresh_profile_search_task(owner_id: int, force: bool = False) -> dict:
+    """Refresh candidate/fact vectors, then re-rank every stored opportunity."""
+    from .domain.embeddings import refresh_fact_embedding, refresh_profile_embedding
+
+    profile = CandidateProfile.objects.select_related('owner').get(owner_id=owner_id)
+    publish_user_event(owner_id, 'profile_embedding_started', {'profile_id': profile.id})
+    embedded_facts = 0
+    for fact in ProfileFact.objects.filter(owner_id=owner_id).iterator():
+        before = fact.embedding_content_hash
+        refresh_fact_embedding(fact, force=force)
+        embedded_facts += int(force or before != fact.embedding_content_hash)
+    refresh_profile_embedding(profile.owner, force=force)
+    matches = recompute_all_matches_task(owner_id)
+    profile.refresh_from_db()
+    payload = {
+        'profile_id': profile.id,
+        'provider': profile.embedding_provider,
+        'model': profile.embedding_model,
+        'embedded_facts': embedded_facts,
+        'matches': matches['count'],
+    }
+    publish_user_event(owner_id, 'profile_embedding_finished', payload)
+    return payload
 
 
 @shared_task

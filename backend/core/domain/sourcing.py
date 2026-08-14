@@ -5,10 +5,10 @@ import ipaddress
 import re
 import socket
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from xml.etree import ElementTree
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 import requests
 from django.conf import settings
@@ -122,6 +122,90 @@ class AshbyConnector(SourceConnector):
         ) for row in rows]
 
 
+class JobicyConnector(SourceConnector):
+    """Free public remote-job feed with structured location and salary data."""
+
+    def fetch(self) -> list[SourceRecord]:
+        count = max(1, min(100, int(self.config.get('count') or 30)))
+        params: dict[str, str | int] = {'count': count}
+        for key in ('geo', 'industry'):
+            value = clean_text(self.config.get(key)).lower()
+            if value:
+                validate_slug(value, f'Jobicy {key}')
+                params[key] = value
+        tag = clean_text(self.config.get('tag'))
+        if tag:
+            params['tag'] = tag[:50]
+        payload = self.get_json(f'https://jobicy.com/api/v2/remote-jobs?{urlencode(params)}')
+        records = []
+        for row in payload.get('jobs', []):
+            url = clean_text(row.get('url'))
+            job_types = ', '.join(clean_text(value) for value in row.get('jobType', []) if clean_text(value))
+            levels = ', '.join(clean_text(value) for value in row.get('jobLevel', []) if clean_text(value)) if isinstance(row.get('jobLevel'), list) else clean_text(row.get('jobLevel'))
+            salary = ''
+            if row.get('salaryMin') is not None or row.get('salaryMax') is not None:
+                salary = ' '.join(str(value) for value in [row.get('salaryCurrency'), row.get('salaryMin'), '-', row.get('salaryMax'), row.get('salaryPeriod')] if value not in {None, ''})
+            description = '\n'.join(value for value in [
+                _plain(row.get('jobDescription') or row.get('jobExcerpt')),
+                f'Employment type: {job_types}' if job_types else '',
+                f'Seniority: {levels}' if levels else '',
+                f'Compensation: {salary}' if salary else '',
+            ] if value)
+            records.append(SourceRecord(
+                external_id=str(row.get('id') or row.get('jobSlug') or stable_hash(url)[:20]),
+                title=clean_text(row.get('jobTitle')),
+                company=clean_text(row.get('companyName')),
+                location=clean_text(row.get('jobGeo')),
+                description=description,
+                source_url=url,
+                application_url=url,
+                posted_at=_source_datetime(row.get('pubDate')),
+                payload={**row, '_source_attribution': 'Jobicy'},
+            ))
+        return records
+
+
+class ArbeitnowConnector(SourceConnector):
+    """Free ATS-derived Europe/UK feed with optional local relevance filtering."""
+
+    def fetch(self) -> list[SourceRecord]:
+        pages = max(1, min(5, int(self.config.get('pages') or 1)))
+        max_results = max(1, min(100, int(self.config.get('max_results') or 30)))
+        remote_only = bool(self.config.get('remote_only'))
+        configured_keywords = self.config.get('keywords') or []
+        if isinstance(configured_keywords, str):
+            configured_keywords = configured_keywords.split(',')
+        keywords = [clean_text(value).lower() for value in configured_keywords if clean_text(value)]
+        records = []
+        for page in range(1, pages + 1):
+            payload = self.get_json(f'https://www.arbeitnow.com/api/job-board-api?page={page}')
+            for row in payload.get('data', []):
+                if remote_only and not bool(row.get('remote')):
+                    continue
+                haystack = ' '.join([
+                    clean_text(row.get('title')),
+                    clean_text(row.get('description')),
+                    ' '.join(clean_text(value) for value in row.get('tags', [])),
+                ]).lower()
+                if keywords and not any(keyword in haystack for keyword in keywords):
+                    continue
+                url = clean_text(row.get('url'))
+                records.append(SourceRecord(
+                    external_id=clean_text(row.get('slug')) or stable_hash(url)[:20],
+                    title=clean_text(row.get('title')),
+                    company=clean_text(row.get('company_name')),
+                    location=clean_text(row.get('location')),
+                    description=_plain(row.get('description')),
+                    source_url=url,
+                    application_url=url,
+                    posted_at=_source_datetime(row.get('created_at')),
+                    payload={**row, '_source_attribution': 'Arbeitnow'},
+                ))
+                if len(records) >= max_results:
+                    return records
+        return records
+
+
 class RSSConnector(SourceConnector):
     def fetch(self) -> list[SourceRecord]:
         url = clean_text(self.config.get('url'))
@@ -153,8 +237,25 @@ CONNECTORS = {
     'greenhouse': GreenhouseConnector,
     'lever': LeverConnector,
     'ashby': AshbyConnector,
+    'jobicy': JobicyConnector,
+    'arbeitnow': ArbeitnowConnector,
     'rss': RSSConnector,
 }
+
+
+def _source_datetime(value: Any) -> datetime | None:
+    if value in {None, ''}:
+        return None
+    if isinstance(value, (int, float)) or str(value).isdigit():
+        try:
+            return datetime.fromtimestamp(int(value), tz=UTC)
+        except (OverflowError, OSError, ValueError):
+            return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed
 
 
 def validate_slug(value: str, label: str) -> None:
@@ -186,7 +287,7 @@ def connector_for(source: JobSource) -> SourceConnector:
         return SourceConnector(source)
     connector_class = CONNECTORS.get(connector_name)
     if connector_class is None:
-        raise ValueError('Choose a supported connector: greenhouse, lever, ashby, or rss.')
+        raise ValueError('Choose a supported connector: greenhouse, lever, ashby, jobicy, arbeitnow, or rss.')
     return connector_class(source)
 
 
@@ -252,11 +353,14 @@ def upsert_source_record(source: JobSource, record: SourceRecord) -> tuple[JobPo
         existing.extracted_json = extracted
         existing.save()
         persist_job_structure(existing, source_payload=record.payload)
+        from core.domain.embeddings import refresh_job_embedding
         from core.domain.matching import recompute_match
+
+        refresh_job_embedding(existing)
         recompute_match(existing)
         return existing, False
 
-    job = import_job_posting(source.owner, text=record.description, source_url=record.source_url, source=source)
+    job = import_job_posting(source.owner, text=record.description, source_url=record.source_url, source=source, score=False)
     job.title = record.title or job.title
     job.company = record.company or job.company
     job.location = record.location or job.location
@@ -267,6 +371,11 @@ def upsert_source_record(source: JobSource, record: SourceRecord) -> tuple[JobPo
     job.last_seen_at = timezone.now()
     job.save()
     persist_job_structure(job, source_payload=record.payload)
+    from core.domain.embeddings import refresh_job_embedding
+    from core.domain.matching import recompute_match
+
+    refresh_job_embedding(job)
+    recompute_match(job)
     return job, True
 
 

@@ -519,8 +519,6 @@ def onboarding_snapshot(owner) -> dict[str, Any]:
 
 
 def _verified_fact(owner, *, fact_type: str, title: str, statement: str, metadata: dict[str, Any] | None = None) -> None:
-    from core.ai import embed_text
-
     title = str(title or '').strip()[:220]
     statement = str(statement or '').strip()
     if not title or not statement:
@@ -537,9 +535,11 @@ def _verified_fact(owner, *, fact_type: str, title: str, statement: str, metadat
             'lifecycle': 'verified',
             'strength': 'strong',
             'metadata': {'source': 'onboarding', **(metadata or {})},
-            'embedding': embed_text(f'{title}\n{statement}'),
         },
     )
+    from core.domain.embeddings import refresh_fact_embedding
+
+    refresh_fact_embedding(fact)
 
 
 def _apply_onboarding_value(owner, profile: CandidateProfile, question: dict[str, Any], value: Any) -> None:
@@ -627,6 +627,9 @@ def _apply_onboarding_value(owner, profile: CandidateProfile, question: dict[str
         fact.confidence = 'high'
         fact.metadata = {**(fact.metadata or {}), 'onboarding_ambiguous': False, 'confirmed_during_onboarding': True}
         fact.save(update_fields=['statement', 'verified_by_user', 'lifecycle', 'confidence', 'metadata', 'updated_at'])
+        from core.domain.embeddings import refresh_fact_embedding
+
+        refresh_fact_embedding(fact)
     else:
         raise ValueError('That profile question is not supported.')
 

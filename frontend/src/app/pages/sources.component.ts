@@ -40,7 +40,7 @@ import { RealtimeService } from '../services/realtime.service';
             Configuration <span class="field-hint">JSON</span>
             <textarea rows="9" [(ngModel)]="configText" name="configText"></textarea>
           </label>
-          <div class="connector-help"><strong>Connector examples</strong><code>{{ '{' }}"connector":"greenhouse","board_token":"acme","company":"Acme"{{ '}' }}</code><code>{{ '{' }}"connector":"lever","site":"acme","company":"Acme"{{ '}' }}</code><code>{{ '{' }}"connector":"ashby","board":"acme","company":"Acme"{{ '}' }}</code></div>
+          <div class="connector-help"><strong>Connector examples</strong><code>{{ '{' }}"connector":"jobicy","count":30,"geo":"canada","industry":"engineering","tag":"platform engineer"{{ '}' }}</code><code>{{ '{' }}"connector":"arbeitnow","remote_only":true,"max_results":30,"keywords":["engineering","software"]{{ '}' }}</code><code>{{ '{' }}"connector":"greenhouse","board_token":"acme","company":"Acme"{{ '}' }}</code><code>{{ '{' }}"connector":"lever","site":"acme","company":"Acme"{{ '}' }}</code><code>{{ '{' }}"connector":"ashby","board":"acme","company":"Acme"{{ '}' }}</code></div>
           <button class="btn-primary" type="button" (click)="create()" [disabled]="saving"><span class="spinner" *ngIf="saving" aria-hidden="true"></span>{{ saving ? 'Saving…' : 'Save source' }}</button>
           <p class="muted">{{ message }}</p>
         </section>

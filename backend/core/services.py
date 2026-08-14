@@ -21,7 +21,6 @@ from .ai import (
     clean_text,
     cosine_similarity,
     detect_skills,
-    embed_text,
     analyze_candidate_resume,
     extract_job,
     extract_profile_facts,
@@ -172,7 +171,6 @@ def ingest_profile_document(document: ProfileDocument) -> dict[str, Any]:
             document=document,
             text=chunk,
             token_count=max(1, len(chunk.split())),
-            embedding=embed_text(chunk),
             metadata={'index': index},
         ))
 
@@ -201,7 +199,7 @@ def ingest_profile_document(document: ProfileDocument) -> dict[str, Any]:
         ambiguous = bool(raw_fact.get('ambiguous')) and ambiguity_count < 5
         if ambiguous:
             ambiguity_count += 1
-        ProfileFact.objects.create(
+        fact = ProfileFact.objects.create(
             owner=document.owner,
             fact_type=fact_type,
             title=title,
@@ -209,7 +207,6 @@ def ingest_profile_document(document: ProfileDocument) -> dict[str, Any]:
             confidence=clean_text(raw_fact.get('confidence', 'medium'))[:24] or 'medium',
             source_document=document,
             source_chunk=source_chunk,
-            embedding=embed_text(f'{title}\n{statement}'),
             metadata={
                 'extractor': extracted.source,
                 'onboarding_ambiguous': ambiguous,
@@ -219,6 +216,9 @@ def ingest_profile_document(document: ProfileDocument) -> dict[str, Any]:
             evidence_quote=evidence_quote,
             strength='strong' if raw_fact.get('confidence') == 'high' and not ambiguous else 'working',
         )
+        from .domain.embeddings import refresh_fact_embedding
+
+        refresh_fact_embedding(fact)
         existing_keys.add(key)
         created += 1
 
@@ -253,6 +253,9 @@ def ingest_profile_document(document: ProfileDocument) -> dict[str, Any]:
         profile.save(update_fields=['onboarding_state', 'updated_at'])
 
     compute_profile_completeness(document.owner)
+    from .domain.embeddings import refresh_profile_embedding
+
+    refresh_profile_embedding(document.owner)
 
     return {'created_facts': created, 'created_chunks': len(chunks)}
 
@@ -277,7 +280,7 @@ def ensure_canonical_resume(document: ProfileDocument) -> Resume:
 
 
 @transaction.atomic
-def import_job_posting(owner, *, text: str, source_url: str = '', source=None) -> JobPosting:
+def import_job_posting(owner, *, text: str, source_url: str = '', source=None, score: bool = True) -> JobPosting:
     extracted = extract_job(text, source_url=source_url)
     data = extracted.data
     content_hash = stable_hash(f'{owner.pk}:{source_url}:{text}')
@@ -293,7 +296,6 @@ def import_job_posting(owner, *, text: str, source_url: str = '', source=None) -
         'extracted_json': {**data, 'extractor': extracted.source},
         'source_url': source_url,
         'application_url': clean_text(data.get('application_url'))[:1000] or source_url,
-        'embedding': embed_text(text),
     }
     job, _ = JobPosting.objects.update_or_create(
         owner=owner,
@@ -307,7 +309,11 @@ def import_job_posting(owner, *, text: str, source_url: str = '', source=None) -
     job.freshness_status = 'fresh'
     job.save(update_fields=['canonical_url', 'last_seen_at', 'freshness_status', 'updated_at'])
     persist_job_structure(job)
-    recompute_match(job)
+    if score:
+        from .domain.embeddings import refresh_job_embedding
+
+        refresh_job_embedding(job)
+        recompute_match(job)
     return job
 
 

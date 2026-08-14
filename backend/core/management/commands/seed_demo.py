@@ -7,7 +7,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from core.ai import cosine_similarity, detect_skills, heuristic_embedding, keywords, stable_hash
+from core.ai import stable_hash
 from core.models import (
     Application,
     ApplicationEvent,
@@ -168,7 +168,6 @@ Prefers remote or hybrid backend/platform roles in Canada or US time zones with 
             document=document,
             text=raw_text,
             token_count=len(raw_text.split()),
-            embedding=heuristic_embedding(raw_text),
             metadata={**DEMO_META, 'index': 0},
         )
         fact_rows = [
@@ -197,7 +196,6 @@ Prefers remote or hybrid backend/platform roles in Canada or US time zones with 
                 verified_by_user=verified,
                 lifecycle='verified' if verified else 'proposed',
                 evidence_quote=statement,
-                embedding=heuristic_embedding(f'{title}\n{statement}'),
                 metadata=DEMO_META,
             )
         return document
@@ -335,64 +333,11 @@ Python, Django REST Framework, PostgreSQL, Redis, Celery, Docker, Angular, OpenA
                 source_url=row['source_url'],
                 application_url=row['source_url'],
                 content_hash=stable_hash(f'demo:{user.pk}:{row["source_url"]}'),
-                embedding=heuristic_embedding(row['text']),
                 status=row['status'],
                 discovered_at=timezone.now() - timedelta(days=len(jobs)),
             )
             jobs.append(job)
         return jobs
-
-    def create_match(self, user, job: JobPosting, facts: list[ProfileFact]) -> JobMatch:
-        fact_text = '\n'.join(f'{fact.title}: {fact.statement}' for fact in facts)
-        semantic = (cosine_similarity(heuristic_embedding(fact_text), job.embedding) + 1) / 2
-        job_skills = job.extracted_json.get('required_skills') or detect_skills(job.description_text)
-        profile_text = fact_text.lower()
-        covered = [skill for skill in job_skills if skill.lower() in profile_text]
-        missing = [skill for skill in job_skills if skill not in covered]
-        lexical = len(set(keywords(job.description_text)) & set(keywords(fact_text))) / max(1, len(set(keywords(job.description_text))))
-        skill_score = len(covered) / max(1, len(job_skills))
-        score = round((semantic * 35) + (skill_score * 45) + (lexical * 20))
-        if job.remote_policy == 'remote':
-            score += 4
-        if job.remote_policy == 'onsite':
-            score -= 12
-        score = max(28, min(96, score))
-        supporting = []
-        for fact in facts:
-            overlap = [skill for skill in covered if skill.lower() in f'{fact.title} {fact.statement}'.lower()]
-            if overlap:
-                supporting.append({
-                    'fact_id': fact.id,
-                    'title': fact.title,
-                    'statement': fact.statement,
-                    'skills': overlap,
-                })
-            if len(supporting) >= 6:
-                break
-        confidence = 'high' if score >= 80 else 'medium' if score >= 60 else 'low'
-        return JobMatch.objects.create(
-            owner=user,
-            job=job,
-            score=score,
-            hard_filter_status='pass' if job.remote_policy != 'onsite' else 'review',
-            explanation_json={
-                'demo': True,
-                'semantic_score': round(semantic, 3),
-                'skill_score': round(skill_score, 3),
-                'lexical_score': round(lexical, 3),
-                'covered_skills': covered,
-                'job_skills': job_skills,
-                'summary': self.match_summary(score, covered, missing, job.remote_policy),
-            },
-            missing_requirements=missing,
-            supporting_facts=supporting,
-            confidence=confidence,
-        )
-
-    def match_summary(self, score: int, covered: list[str], missing: list[str], remote_policy: str) -> str:
-        fit = 'Strong match' if score >= 80 else 'Possible match' if score >= 60 else 'Weak match'
-        location = ' Remote policy is favorable.' if remote_policy == 'remote' else ' Location needs review.' if remote_policy == 'onsite' else ''
-        return f'{fit}: {len(covered)} key requirements supported, {len(missing)} visible gaps.{location}'
 
     def create_tailored_resumes(self, user, canonical: Resume, jobs: list[JobPosting]) -> list[Resume]:
         selected_jobs = jobs[:3]

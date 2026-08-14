@@ -13,6 +13,7 @@ celery = "*"
 redis = "*"
 gunicorn = "*"
 psycopg2-binary = "*"
+pgvector = "*"
 channels = "*"
 channels-redis = "*"
 daphne = "*"
@@ -26,4 +27,3 @@ requests = "*"
 
 [requires]
 python_version = "3.12"
-

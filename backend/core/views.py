@@ -57,7 +57,14 @@ from .serializers import (
     SourceRunSerializer,
 )
 from .services import create_tailored_resume, dashboard, generate_strategy, import_job_posting, ingest_profile_document, recompute_match
-from .tasks import execute_agent_run_task, execute_source_run_task, ingest_profile_document_task, recompute_all_matches_task, recompute_job_match_task
+from .tasks import (
+    execute_agent_run_task,
+    execute_source_run_task,
+    ingest_profile_document_task,
+    recompute_all_matches_task,
+    recompute_job_match_task,
+    refresh_profile_search_task,
+)
 
 
 def enqueue_profile_ingestion(document: ProfileDocument) -> dict:
@@ -70,6 +77,15 @@ def enqueue_profile_ingestion(document: ProfileDocument) -> dict:
         result = ingest_profile_document(document)
         publish_user_event(document.owner_id, 'profile_ingestion_finished', {'document_id': document.id, **result})
         return {'mode': 'sync', **result}
+
+
+def enqueue_profile_search_refresh(owner_id: int) -> None:
+    try:
+        refresh_profile_search_task.delay(owner_id)
+    except Exception:
+        # The next match recomputation also refreshes stale candidate/job
+        # vectors, so a temporarily unavailable worker never loses the edit.
+        pass
 
 
 class OwnedViewSet(viewsets.ModelViewSet):
@@ -160,6 +176,7 @@ class CandidateProfileView(APIView):
             compute_profile_completeness(request.user)
             profile.refresh_from_db()
         publish_user_event(request.user.id, 'candidate_profile_updated', {'profile_id': profile.id})
+        enqueue_profile_search_refresh(request.user.id)
         return Response(CandidateProfileSerializer(profile).data)
 
 
@@ -186,6 +203,7 @@ class CandidateOnboardingView(APIView):
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         snapshot['profile'] = CandidateProfileSerializer(candidate_profile(request.user)).data
         publish_user_event(request.user.id, 'candidate_onboarding_updated', {'step': step, 'next_step': snapshot['step']['id']})
+        enqueue_profile_search_refresh(request.user.id)
         return Response(snapshot)
 
 
@@ -197,6 +215,18 @@ class CandidatePreferenceViewSet(OwnedViewSet):
         qs = super().get_queryset()
         category = self.request.query_params.get('category')
         return qs.filter(category=category) if category else qs
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+        enqueue_profile_search_refresh(self.request.user.id)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        enqueue_profile_search_refresh(self.request.user.id)
+
+    def perform_destroy(self, instance):
+        instance.delete()
+        enqueue_profile_search_refresh(self.request.user.id)
 
 
 class ProfileFactViewSet(OwnedViewSet):
@@ -216,18 +246,26 @@ class ProfileFactViewSet(OwnedViewSet):
             qs = qs.filter(Q(title__icontains=search) | Q(statement__icontains=search))
         return qs
 
+    def perform_create(self, serializer):
+        fact = serializer.save(owner=self.request.user)
+        from .domain.embeddings import refresh_fact_embedding
+
+        refresh_fact_embedding(fact)
+        enqueue_profile_search_refresh(self.request.user.id)
+
     def perform_update(self, serializer):
         fact = serializer.save()
-        from .ai import embed_text
+        from .domain.embeddings import refresh_fact_embedding
 
-        fact.embedding = embed_text(f'{fact.title}\n{fact.statement}')
-        fact.save(update_fields=['embedding', 'updated_at'])
+        refresh_fact_embedding(fact)
         publish_user_event(self.request.user.id, 'profile_fact_updated', {'fact_id': fact.id})
+        enqueue_profile_search_refresh(self.request.user.id)
 
     def perform_destroy(self, instance):
         fact_id = instance.id
         instance.delete()
         publish_user_event(self.request.user.id, 'profile_fact_deleted', {'fact_id': fact_id})
+        enqueue_profile_search_refresh(self.request.user.id)
 
     @action(detail=True, methods=['post'])
     def verify(self, request, pk=None):
@@ -236,6 +274,7 @@ class ProfileFactViewSet(OwnedViewSet):
         fact.lifecycle = 'verified'
         fact.save(update_fields=['verified_by_user', 'lifecycle', 'updated_at'])
         publish_user_event(request.user.id, 'profile_fact_updated', {'fact_id': fact.id})
+        enqueue_profile_search_refresh(request.user.id)
         return Response(self.get_serializer(fact).data)
 
 
@@ -281,6 +320,7 @@ class JobPostingViewSet(OwnedViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         search = self.request.query_params.get('search')
+        semantic_query = self.request.query_params.get('semantic_query')
         status_value = self.request.query_params.get('status')
         remote_policy = self.request.query_params.get('remote_policy')
         min_score = self.request.query_params.get('min_score')
@@ -299,7 +339,16 @@ class JobPostingViewSet(OwnedViewSet):
                 qs = qs.filter(match__score__gte=int(min_score))
             except ValueError:
                 pass
-        return qs
+        if semantic_query:
+            from .domain.embeddings import rank_jobs_by_query
+
+            return rank_jobs_by_query(qs, semantic_query)
+        profile = CandidateProfile.objects.filter(owner=self.request.user).first()
+        if profile is None:
+            return qs.order_by('-match__score', '-posted_at', '-discovered_at')
+        from .domain.embeddings import rank_jobs_by_profile
+
+        return rank_jobs_by_profile(qs, profile)
 
     @action(detail=False, methods=['post'])
     def import_job(self, request):

@@ -95,11 +95,13 @@
 
       <section id="sourcing">
         <p class="eyebrow">Discovery</p><h2>Use compliant, explicit sources.</h2>
-        <p>Manual imports require no configuration. Live sources use public Greenhouse, Lever, Ashby, or RSS endpoints. Give the source a clear name, select its kind, and provide JSON configuration.</p>
+        <p>Manual imports require no configuration. Live sources use the free Jobicy and Arbeitnow feeds, public Greenhouse, Lever, and Ashby boards, or RSS endpoints. Give the source a clear name, select its kind, and provide JSON configuration.</p>
         <div class="grid">
           <article class="card"><h3>Greenhouse</h3><p><code>{"connector":"greenhouse","board_token":"acme","company":"Acme"}</code></p></article>
           <article class="card"><h3>Lever</h3><p><code>{"connector":"lever","site":"acme","company":"Acme"}</code></p></article>
           <article class="card"><h3>Ashby</h3><p><code>{"connector":"ashby","board":"acme","company":"Acme"}</code></p></article>
+          <article class="card"><h3>Jobicy</h3><p><code>{"connector":"jobicy","count":30,"geo":"canada","industry":"engineering","tag":"platform engineer"}</code></p></article>
+          <article class="card"><h3>Arbeitnow</h3><p><code>{"connector":"arbeitnow","remote_only":true,"max_results":30,"keywords":["engineering","software"]}</code></p></article>
           <article class="card"><h3>RSS</h3><p><code>{"connector":"rss","url":"https://example.com/jobs.xml","company":"Acme"}</code></p></article>
         </div>
         <p>Choose <strong>Run</strong> to refresh a source. A persistent activity card lets you leave the page while discovery, normalization, and scoring continue. Demo-tagged sample sources are illustrative and safely return no live postings until you replace their configuration.</p>
@@ -107,10 +109,11 @@
 
       <section id="matching">
         <p class="eyebrow">Decision support</p><h2>Read the score, then read the evidence.</h2>
+        <p>Forth embeds your complete candidate profile and every normalized job profile with OpenAI, then uses pgvector cosine search to bring the closest opportunities and supporting profile facts forward. Structured requirements and hard constraints still remain visible instead of being hidden inside the AI score.</p>
         <div class="screen"><div class="screen-head"><div><h3>Opportunity detail</h3><p>Eligibility is shown separately from fit.</p></div><span class="mock-score">82</span></div><div class="mock"><div><div class="mock-row bright"></div><div class="mock-row"></div><div class="mock-row short"></div></div><div><div class="mock-row bright"></div><div class="mock-row"></div><div class="mock-row"></div><div class="mock-row short"></div></div></div></div>
         <div class="grid">
           <article class="card"><h3>Hard eligibility</h3><p>Pass, review, or uncertain reflects constraints such as location, authorization, and work mode. Treat uncertainty as a prompt to verify the posting.</p></article>
-          <article class="card"><h3>Five fit signals</h3><p>Skill coverage, semantic experience, role alignment, preference alignment, and evidence strength are weighted separately so the total is explainable.</p></article>
+          <article class="card"><h3>Six fit signals</h3><p>Skills, evidence quality, whole-profile semantic fit, role direction, domain relevance, and logistics are weighted separately so the total is explainable.</p></article>
           <article class="card"><h3>Confidence</h3><p>Confidence describes the evidence quality behind the score. A high score with low confidence still deserves manual inspection.</p></article>
           <article class="card"><h3>Gaps and evidence</h3><p>Visible gaps show missing or weakly supported requirements. Evidence links the positive case back to candidate facts.</p></article>
         </div>
@@ -155,7 +158,7 @@
 
       <section id="troubleshooting">
         <p class="eyebrow">When something looks wrong</p><h2>Fast checks before retrying.</h2>
-        <details><summary>A source finishes with an error</summary><p>Validate the JSON first. Confirm the connector name and its required key: board_token for Greenhouse, site for Lever, board for Ashby, or a public URL for RSS. Private and loopback URLs are rejected by design.</p></details>
+        <details><summary>A source finishes with an error</summary><p>Validate the JSON first. Confirm the connector name and its required key: optional filters for Jobicy and Arbeitnow, board_token for Greenhouse, site for Lever, board for Ashby, or a public URL for RSS. Private and loopback URLs are rejected by design.</p></details>
         <details><summary>A score looks unexpectedly low</summary><p>Check hard eligibility, confidence, missing requirements, and supporting facts. Add or verify relevant evidence, correct the search brief, then choose Recompute on the opportunity.</p></details>
         <details><summary>I cannot approve a draft</summary><p>Review the unsupported-claims list. If the claim is wrong, do not approve the version. If it is accurate and you can substantiate it, check the explicit risk-review box and approve.</p></details>
         <details><summary>Render PDF bundle is rejected</summary><p>The current resume and, when present, cover letter must both be approved. Return to Document Studio, approve the exact drafts, then request rendering again.</p></details>

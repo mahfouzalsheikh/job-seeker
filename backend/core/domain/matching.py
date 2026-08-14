@@ -5,16 +5,24 @@ from typing import Any
 
 from django.db import transaction
 
-from core.ai import cosine_similarity, detect_skills, embed_text, keywords
+from core.ai import detect_skills, keywords
+from core.domain.embeddings import (
+    nearest_profile_facts,
+    profile_job_similarity,
+    refresh_job_embedding,
+    refresh_profile_embedding,
+    vector_similarity,
+)
 from core.domain.profiles import profile_context
 from core.models import JobMatch, JobPosting, MatchSignal, ProfileFact
 
 
 WEIGHTS = {
-    'skills': 35,
-    'evidence': 25,
-    'direction': 20,
-    'domain': 10,
+    'skills': 25,
+    'evidence': 20,
+    'semantic': 25,
+    'direction': 15,
+    'domain': 5,
     'logistics': 10,
 }
 
@@ -69,6 +77,8 @@ def _signal(kind: str, label: str, score: int, explanation: str, evidence: list[
 @transaction.atomic
 def recompute_match(job: JobPosting) -> JobMatch:
     context = profile_context(job.owner)
+    profile = refresh_profile_embedding(job.owner)
+    job = refresh_job_embedding(job)
     facts = list(ProfileFact.objects.filter(owner=job.owner).order_by('-verified_by_user', 'fact_type', 'title')[:250])
     fact_text = '\n'.join(f'{fact.title}: {fact.statement}' for fact in facts)
     profile_blob = fact_text.lower()
@@ -81,19 +91,45 @@ def recompute_match(job: JobPosting) -> JobMatch:
     missing = [skill for skill in job_skills if skill not in covered]
     skill_score = round(len(covered) / max(1, len(job_skills)) * 100)
 
-    supporting = []
+    supporting_by_id: dict[int, dict[str, Any]] = {}
     for fact in facts:
         overlap = [skill for skill in covered if _contains(f'{fact.title} {fact.statement}', skill)]
         if overlap:
-            supporting.append({
+            supporting_by_id[fact.id] = {
                 'fact_id': fact.id,
                 'title': fact.title,
                 'statement': fact.statement,
                 'skills': overlap,
                 'verified': fact.verified_by_user or fact.lifecycle == 'verified',
-            })
+                'match_basis': 'skill evidence',
+            }
+    for fact in nearest_profile_facts(job.owner, job.semantic_embedding, limit=12):
+        similarity = vector_similarity(fact.semantic_embedding, job.semantic_embedding)
+        if similarity < 0.18:
+            continue
+        existing = supporting_by_id.get(fact.id)
+        if existing:
+            existing['semantic_similarity'] = round(similarity * 100)
+            existing['match_basis'] = 'skill and semantic evidence'
+            continue
+        supporting_by_id[fact.id] = {
+            'fact_id': fact.id,
+            'title': fact.title,
+            'statement': fact.statement,
+            'skills': [],
+            'verified': fact.verified_by_user or fact.lifecycle == 'verified',
+            'semantic_similarity': round(similarity * 100),
+            'match_basis': 'semantic evidence',
+        }
+    supporting = sorted(
+        supporting_by_id.values(),
+        key=lambda fact: (-int(fact['verified']), -fact.get('semantic_similarity', 0), fact['title'].lower()),
+    )
     verified_support = [fact for fact in supporting if fact['verified']]
-    evidence_score = min(100, len(supporting) * 10 + len(verified_support) * 8)
+    evidence_score = min(
+        100,
+        len(supporting) * 10 + len(verified_support) * 8 + min(40, len(covered) * 10),
+    )
 
     targets = [str(value).lower() for value in context['profile'].get('target_roles', [])]
     title_tokens = set(keywords(job.title, limit=20))
@@ -106,14 +142,24 @@ def recompute_match(job: JobPosting) -> JobMatch:
     hard_status, failures, uncertainties = eligibility(job, context)
     logistics_score = 100 if hard_status == 'pass' else 60 if hard_status == 'uncertain' else 0
 
-    fact_embedding = embed_text(fact_text) if fact_text else []
-    job_embedding = job.embedding or embed_text(job.description_text)
-    semantic = round(((cosine_similarity(fact_embedding, job_embedding) + 1) / 2) * 100) if fact_text else 0
-    evidence_score = round(evidence_score * .7 + semantic * .3)
+    semantic_similarity = profile_job_similarity(profile, job)
+    semantic_score = round(max(0.0, semantic_similarity) * 100)
 
     signals = [
         _signal('skills', 'Skills and depth', skill_score, f'{len(covered)} of {len(job_skills)} visible skills are supported.', covered),
         _signal('evidence', 'Experience evidence', evidence_score, f'{len(supporting)} profile facts support this role; {len(verified_support)} are verified.', supporting[:12]),
+        _signal(
+            'semantic',
+            'Whole-profile semantic fit',
+            semantic_score,
+            'Cosine similarity between the complete candidate profile and normalized job profile.',
+            [{
+                'candidate_embedding_model': profile.embedding_model,
+                'job_embedding_model': job.embedding_model,
+                'candidate_provider': profile.embedding_provider,
+                'job_provider': job.embedding_provider,
+            }],
+        ),
         _signal('direction', 'Role direction', direction_score, 'Alignment with the candidate’s stated target roles.', context['profile'].get('target_roles', [])),
         _signal('domain', 'Domain relevance', domain_score, 'Alignment with target industries and prior domain evidence.', industries),
         _signal('logistics', 'Logistics', logistics_score, 'Location, work mode, compensation, and exclusions.', failures + uncertainties),
@@ -136,8 +182,11 @@ def recompute_match(job: JobPosting) -> JobMatch:
         'job_skills': job_skills,
         'eligibility_failures': failures,
         'eligibility_uncertainties': uncertainties,
+        'semantic_similarity': round(semantic_similarity, 4),
+        'embedding_model': job.embedding_model,
+        'embedding_provider': job.embedding_provider,
         'signals': signals,
-        'score_version': '2026-08-v2',
+        'score_version': '2026-08-v3-pgvector',
     }
     match, _ = JobMatch.objects.update_or_create(
         owner=job.owner,
@@ -156,4 +205,3 @@ def recompute_match(job: JobPosting) -> JobMatch:
         MatchSignal(owner=job.owner, match=match, **signal) for signal in signals
     ])
     return match
-

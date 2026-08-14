@@ -6,7 +6,7 @@ The stack intentionally follows the sibling Drawing Algorithms project:
 
 - Angular 21 frontend
 - Django / Django REST Framework backend
-- PostgreSQL
+- PostgreSQL with pgvector and HNSW cosine indexes
 - Redis
 - Celery workers and beat
 - Django Channels realtime updates
@@ -21,14 +21,15 @@ The stack intentionally follows the sibling Drawing Algorithms project:
 - Extract profile facts and confirm or correct uncertain claims before activation.
 - Manually import job descriptions or job URLs.
 - Extract structured job metadata.
-- Compute match scores with evidence and gaps.
+- Embed canonical candidate and job profiles with OpenAI `text-embedding-3-small`.
+- Search and rank stored jobs with pgvector cosine distance, then compute transparent match scores with evidence and gaps.
 - Generate tailored resume drafts from verified/profile facts and canonical resume content.
 - Review validation notes, weak claims, and unsupported claims.
 - Export resume markdown.
 - Create application records from jobs.
 - Move applications through a pipeline.
 - Maintain a living search brief with target roles, industries, authorization, work modes, compensation, and explicit preference strength.
-- Run Greenhouse, Lever, Ashby, and RSS discovery connectors with durable source-run history.
+- Run Jobicy, Arbeitnow, Greenhouse, Lever, Ashby, and RSS discovery connectors with durable source-run history.
 - Review decomposed fit signals separately from hard eligibility gates.
 - Collaborate with six bounded specialist workflows through the Forth Concierge.
 - Approve consequential actions through a durable human-in-the-loop queue.
@@ -41,7 +42,8 @@ The stack intentionally follows the sibling Drawing Algorithms project:
 Candidate evidence + explicit preferences
   -> scheduled compliant discovery
   -> freshness, versioning, normalization, and dedupe
-  -> eligibility gate + decomposed fit score + citations
+  -> OpenAI candidate/job embeddings + pgvector retrieval
+  -> eligibility gate + semantic and evidence-based fit score + citations
   -> user approves an opportunity
   -> resume + cover-letter plan and draft
   -> claim review and document approval
@@ -127,8 +129,24 @@ The Angular dev server runs on `http://localhost:4200`. For full API access in d
 
 - OpenAI keys must stay in backend environment variables.
 - Generated resume claims should be reviewed before use.
-- Discovery is limited to manual imports and configured public ATS/RSS endpoints; the system does not bypass authentication, anti-bot controls, or site terms.
+- Discovery is limited to manual imports and compliant public job-feed/ATS/RSS endpoints; the system does not bypass authentication, anti-bot controls, or site terms.
 - The deterministic fallback path keeps the app usable even if OpenAI calls fail.
+
+## Semantic Search and Matching
+
+Candidate profiles, individual profile facts, and normalized job profiles are stored
+in fixed-width pgvector columns. Embeddings are content-hashed and model-versioned,
+so edits only regenerate stale vectors. PostgreSQL uses cosine distance for candidate
+to-job ranking and nearest-evidence retrieval; the final score remains explainable and
+also includes skills, evidence quality, stated direction, domain, and logistics.
+
+Rebuild all vectors and matches after changing the embedding model or dimensions:
+
+```bash
+docker compose exec web python manage.py rebuild_search_embeddings --force
+```
+
+The jobs API accepts `semantic_query=<natural language intent>` for vector search.
 
 ## Primary Experience
 

@@ -135,9 +135,14 @@ class CandidateProfileSerializer(serializers.ModelSerializer):
             'location', 'authorized_countries', 'work_modes', 'employment_types',
             'minimum_compensation', 'compensation_currency', 'excluded_companies',
             'completeness', 'last_reviewed_at', 'onboarding_state',
-            'onboarding_completed_at', 'created_at', 'updated_at',
+            'onboarding_completed_at', 'embedding_model', 'embedding_provider',
+            'embedding_updated_at', 'created_at', 'updated_at',
         ]
-        read_only_fields = ['completeness', 'last_reviewed_at', 'onboarding_state', 'onboarding_completed_at', 'created_at', 'updated_at']
+        read_only_fields = [
+            'completeness', 'last_reviewed_at', 'onboarding_state',
+            'onboarding_completed_at', 'embedding_model', 'embedding_provider',
+            'embedding_updated_at', 'created_at', 'updated_at',
+        ]
 
 
 class CandidatePreferenceSerializer(serializers.ModelSerializer):
@@ -226,9 +231,13 @@ class JobPostingSerializer(OwnerScopedRelationsMixin, serializers.ModelSerialize
             'source_url', 'application_url', 'status', 'posted_at',
             'canonical_url', 'source_external_id', 'last_seen_at', 'expires_at',
             'freshness_status', 'discovered_at', 'created_at', 'updated_at', 'match',
-            'requirements', 'versions',
+            'requirements', 'versions', 'embedding_model', 'embedding_provider',
+            'embedding_updated_at',
         ]
-        read_only_fields = ['extracted_json', 'discovered_at', 'created_at', 'updated_at', 'match']
+        read_only_fields = [
+            'extracted_json', 'discovered_at', 'created_at', 'updated_at', 'match',
+            'embedding_model', 'embedding_provider', 'embedding_updated_at',
+        ]
 
 
 class JobImportSerializer(serializers.Serializer):

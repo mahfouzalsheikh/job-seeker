@@ -73,9 +73,11 @@ class AgenticWorkflowTests(TestCase):
 
         self.assertEqual(match.hard_filter_status, 'pass')
         self.assertGreaterEqual(match.score, 70)
-        self.assertEqual(match.signals.count(), 5)
+        self.assertEqual(match.signals.count(), 6)
         self.assertTrue(match.supporting_facts)
         self.assertIn('score_version', match.explanation_json)
+        self.assertTrue(match.signals.filter(kind='semantic').exists())
+        self.assertEqual(match.explanation_json['score_version'], '2026-08-v3-pgvector')
 
     def test_document_workflow_waits_for_approval_then_prepares_materials(self):
         run = create_concierge_run(self.user, message='Prepare my strongest opportunity')

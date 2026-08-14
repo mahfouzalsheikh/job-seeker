@@ -49,6 +49,13 @@ class AIResult:
     source: str
 
 
+@dataclass
+class EmbeddingResult:
+    vector: list[float]
+    model: str
+    provider: str
+
+
 def stable_hash(text: str) -> str:
     return hashlib.sha256((text or '').encode('utf-8')).hexdigest()
 
@@ -145,19 +152,40 @@ def openai_client():
     )
 
 
-def embed_text(text: str) -> list[float]:
+def embedding_dimensions() -> int:
+    # The database vector columns are deliberately fixed-width. Changing this
+    # setting requires a matching schema migration and a full embedding rebuild.
+    return int(getattr(settings, 'OPENAI_EMBEDDING_DIMENSIONS', 1536))
+
+
+def embed_text_result(text: str) -> EmbeddingResult:
     cleaned = clean_text(text)
+    dimensions = embedding_dimensions()
+    model = getattr(settings, 'OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small')
     client = openai_client() if _openai_available() else None
     if client and cleaned:
         try:
             response = client.embeddings.create(
-                model=getattr(settings, 'OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small'),
+                model=model,
                 input=cleaned[:12000],
+                dimensions=dimensions,
             )
-            return [float(value) for value in response.data[0].embedding]
+            vector = [float(value) for value in response.data[0].embedding]
+            if len(vector) != dimensions:
+                raise ValueError(f'Embedding model returned {len(vector)} dimensions; expected {dimensions}.')
+            return EmbeddingResult(vector=vector, model=model, provider='openai')
         except Exception:
             _back_off_openai()
-    return heuristic_embedding(cleaned)
+    return EmbeddingResult(
+        vector=heuristic_embedding(cleaned, dimensions=dimensions),
+        model=f'heuristic-v1-{dimensions}',
+        provider='local_fallback',
+    )
+
+
+def embed_text(text: str) -> list[float]:
+    """Compatibility wrapper for callers that only need the numeric vector."""
+    return embed_text_result(text).vector
 
 
 def generate_json(system: str, user: str, schema: dict[str, Any] | None = None) -> AIResult | None:
