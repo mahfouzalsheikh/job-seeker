@@ -8,3 +8,15 @@ class ChannelLayerSettingsTests(SimpleTestCase):
 
         self.assertIsNone(host['socket_timeout'])
         self.assertEqual(host['socket_connect_timeout'], 5)
+
+
+class StaticFilesSettingsTests(SimpleTestCase):
+    def test_whitenoise_serves_files_collected_during_image_build(self):
+        security_middleware = settings.MIDDLEWARE.index('django.middleware.security.SecurityMiddleware')
+        whitenoise_middleware = settings.MIDDLEWARE.index('whitenoise.middleware.WhiteNoiseMiddleware')
+
+        self.assertEqual(whitenoise_middleware, security_middleware + 1)
+        self.assertEqual(
+            settings.STORAGES['staticfiles']['BACKEND'],
+            'whitenoise.storage.CompressedStaticFilesStorage',
+        )

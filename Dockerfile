@@ -26,7 +26,9 @@ RUN pip install --no-cache-dir pipenv \
 COPY backend ./backend
 COPY --from=frontend-build /app/frontend/dist/forth-web/browser /app/backend/staticfiles
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh \
+    && cd /app/backend \
+    && python manage.py collectstatic --noinput
 
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app/backend
