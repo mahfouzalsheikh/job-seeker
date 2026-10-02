@@ -38,7 +38,7 @@ import { RealtimeService } from '../services/realtime.service';
       <div class="workspace-grid" *ngIf="activeTab === 'matches'">
         <section class="panel matches-list-panel">
           <div class="panel-head">
-            <div><h2>Ranked opportunities</h2><p>{{ jobs.length }} roles · sorted by decision value</p></div>
+            <div><h2>Recent opportunities</h2><p>{{ totalJobs }} roles · newest discoveries first</p></div>
             <div class="filter-row">
               <div class="search-field"><span>⌕</span><input class="compact-input" aria-label="Search jobs" placeholder="Search" [(ngModel)]="search" (keyup.enter)="load()"></div>
               <select class="compact-input" [(ngModel)]="minScore" (change)="load()">
@@ -60,9 +60,10 @@ import { RealtimeService } from '../services/realtime.service';
               <small>{{ job.company || 'Unknown company' }} · {{ job.location || job.remote_policy }}</small>
               <span class="job-meta-line"><i [class.pass]="job.match?.hard_filter_status === 'pass'"></i>{{ job.match?.hard_filter_status || 'uncertain' }} eligibility · {{ job.freshness_status || 'fresh' }}</span>
             </span>
-            <span class="fit-score" [class.high]="(job.match?.score || 0) >= 75">{{ job.match?.score || 0 }}<small>fit</small></span>
+            <span class="fit-score" [class.high]="job.match?.meets_profile_threshold"><b>{{ job.match?.normalized_score || 0 }}</b><small>calibrated · {{ job.match?.score || 0 }} raw</small></span>
           </button>
           <div class="empty-state small" *ngIf="!jobs.length"><span class="empty-icon">◇</span><h3>No matching jobs yet</h3><p>Import a job description to get your first fit score.</p><button class="btn-primary" type="button" (click)="activeTab = 'import'">Import a job</button></div>
+          <nav class="pagination compact-pagination" *ngIf="pageCount > 1" aria-label="Opportunity pages"><button class="btn-secondary" type="button" (click)="goToPage(currentPage - 1)" [disabled]="currentPage === 1">← Newer</button><span>{{ currentPage }} / {{ pageCount }}</span><button class="btn-secondary" type="button" (click)="goToPage(currentPage + 1)" [disabled]="currentPage === pageCount">Older →</button></nav>
         </section>
 
         <section class="panel detail-panel" *ngIf="selected; else emptyState">
@@ -71,7 +72,7 @@ import { RealtimeService } from '../services/realtime.service';
               <h2>{{ selected.title }}</h2>
               <p>{{ selected.company || 'Unknown company' }} · {{ selected.location || 'Location unknown' }}</p>
             </div>
-            <span class="fit-badge">{{ selected.match?.score || 0 }}<small>fit</small></span>
+            <span class="fit-badge" [class.good]="selected.match?.meets_profile_threshold">{{ selected.match?.normalized_score || 0 }}<small>calibrated · {{ selected.match?.score || 0 }} raw</small></span>
           </div>
 
           <div class="card-line">
@@ -79,6 +80,7 @@ import { RealtimeService } from '../services/realtime.service';
             <span class="status-chip">{{ selected.match?.confidence || 'unscored' }}</span>
             <span class="status-chip">{{ selected.seniority || 'seniority unknown' }}</span>
             <span class="status-chip" [class.good]="selected.match?.hard_filter_status === 'pass'">{{ selected.match?.hard_filter_status || 'uncertain' }} eligibility</span>
+            <span class="status-chip" [class.good]="selected.match?.meets_profile_threshold">{{ selected.match?.meets_profile_threshold ? 'ready to prepare' : 'below your threshold' }} · raw target {{ selected.match?.profile_minimum_score || 50 }}</span>
           </div>
 
           <div class="insight-callout"><span>✦</span><div><strong>Match summary</strong><p>{{ selected.match?.explanation_json?.summary || 'No match summary yet.' }}</p></div></div>
@@ -120,6 +122,9 @@ import { RealtimeService } from '../services/realtime.service';
 })
 export class MatchesComponent implements OnInit, OnDestroy {
   jobs: JobPosting[] = [];
+  totalJobs = 0;
+  currentPage = 1;
+  readonly pageSize = 40;
   selected?: JobPosting;
   jobText = '';
   sourceUrl = '';
@@ -156,8 +161,10 @@ export class MatchesComponent implements OnInit, OnDestroy {
     const params: Record<string, string> = {};
     if (this.search) params['search'] = this.search;
     if (this.minScore) params['min_score'] = this.minScore;
+    params['page'] = String(this.currentPage);
     this.api.jobs(params).subscribe((page) => {
       this.jobs = page.results;
+      this.totalJobs = page.count;
       if (this.selected) {
         this.selected = this.jobs.find((job) => job.id === this.selected?.id);
       } else if (this.jobs.length) {
@@ -165,6 +172,9 @@ export class MatchesComponent implements OnInit, OnDestroy {
       }
     });
   }
+
+  get pageCount(): number { return Math.max(1, Math.ceil(this.totalJobs / this.pageSize)); }
+  goToPage(page: number): void { if (page >= 1 && page <= this.pageCount && page !== this.currentPage) { this.currentPage = page; this.selected = undefined; this.load(); } }
 
   select(job: JobPosting): void {
     this.selected = job;

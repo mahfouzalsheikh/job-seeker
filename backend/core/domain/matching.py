@@ -13,8 +13,9 @@ from core.domain.embeddings import (
     refresh_profile_embedding,
     vector_similarity,
 )
-from core.domain.profiles import profile_context
+from core.domain.profiles import authoritative_facts, profile_context
 from core.models import JobMatch, JobPosting, MatchSignal, ProfileFact
+from core.domain.scoring import normalize_match_score
 
 
 WEIGHTS = {
@@ -27,8 +28,95 @@ WEIGHTS = {
 }
 
 
+# The job extractor may legitimately return a requirement sentence (for example,
+# "In-depth experience with TypeScript, Python, and AI-native software
+# development") rather than a single technology.  These concepts let matching
+# retain the useful non-technology parts of that sentence without treating the
+# complete sentence as an indivisible skill.
+CAPABILITY_PATTERNS = {
+    'engineering management': ('engineering management', 'engineering-management', 'engineering manager', 'manage engineers'),
+    'technical leadership': ('technical leadership', 'technical direction', 'technical decision'),
+    'full-stack development': ('full-stack', 'full stack'),
+    'web applications': ('web application', 'web app', 'frontend', 'front-end'),
+    'software architecture': ('software architecture', 'system architecture', 'architecture'),
+    'ai platform development': ('ai platform', 'ai-native', 'applied ai'),
+    'llm evaluation': ('llm evaluation', 'llm eval', 'evals pipeline', 'test harness'),
+}
+
+CAPABILITY_EVIDENCE = {
+    'engineering management': ('engineering management', 'engineering manager', 'engineering team lead', 'team lead', 'led a team', 'lead a team'),
+    'technical leadership': ('technical leadership', 'technical direction', 'technical decision', 'system design'),
+    'full-stack development': ('full-stack', 'full stack', 'front-end', 'frontend', 'backend'),
+    'web applications': ('web application', 'application development', 'front-end', 'frontend', 'large websites'),
+    'software architecture': ('software architecture', 'system architecture', 'application architecture', 'system design', 'architecture'),
+    'ai platform development': ('ai platform', 'ai-native', 'applied ai'),
+    'llm evaluation': ('llm evaluation', 'llm eval', 'evals pipeline', 'test harness'),
+}
+
+MANAGEMENT_TITLE_TOKENS = {'manager', 'management', 'lead', 'leader', 'head', 'director', 'principal'}
+
+
 def _contains(blob: str, value: str) -> bool:
     return bool(value and re.search(rf'(?<!\w){re.escape(value.lower())}(?!\w)', blob.lower()))
+
+
+def _contains_any(blob: str, values: tuple[str, ...]) -> bool:
+    return any(_contains(blob, value) for value in values)
+
+
+def _normalized_requirements(job: JobPosting) -> list[dict[str, Any]]:
+    """Split extracted requirement prose into matchable atomic capabilities.
+
+    We preserve whether the source called a capability required or preferred.
+    A preferred item can improve a score, but an absence must not be presented
+    as a hard gap.
+    """
+    requirements: dict[str, dict[str, Any]] = {}
+    for requirement in job.requirements.filter(category='skill'):
+        text = requirement.text or requirement.normalized_value
+        # "AI" alone is too broad to be meaningful evidence, and AI-native
+        # wording is represented by the more specific capability below.
+        names = [skill.lower() for skill in detect_skills(text) if skill.lower() != 'ai']
+        lowered = text.lower()
+        names.extend(
+            name for name, patterns in CAPABILITY_PATTERNS.items()
+            if _contains_any(lowered, patterns)
+        )
+        # A short, atomic extracted value still has value even when it is not
+        # in the local technology vocabulary.
+        if not names and len(keywords(text, limit=8)) <= 3:
+            names.append((requirement.normalized_value or text).lower())
+        for name in dict.fromkeys(names):
+            existing = requirements.get(name)
+            candidate = {
+                'name': name,
+                'required': requirement.kind == 'required' or requirement.is_hard,
+                'source_text': text,
+            }
+            if existing:
+                existing['required'] = existing['required'] or candidate['required']
+            else:
+                requirements[name] = candidate
+    return list(requirements.values())
+
+
+def _requirement_supported(blob: str, name: str) -> bool:
+    aliases = CAPABILITY_EVIDENCE.get(name)
+    return _contains_any(blob, aliases) if aliases else _contains(blob, name)
+
+
+def _role_direction_score(title: str, targets: list[str]) -> int:
+    """Score title direction while recognizing closely related leadership roles."""
+    if not targets:
+        return 55
+    title_tokens = set(keywords(title, limit=20))
+    target_tokens = set(keywords(' '.join(targets), limit=60))
+    lexical = 100 * len(title_tokens & target_tokens) / max(1, len(title_tokens))
+    title_is_management = bool(title_tokens & MANAGEMENT_TITLE_TOKENS)
+    target_is_management = bool(target_tokens & MANAGEMENT_TITLE_TOKENS)
+    if 'engineering' in title_tokens and 'engineering' in target_tokens and title_is_management and target_is_management:
+        return max(round(lexical), 82)
+    return round(lexical)
 
 
 def _compensation_floor(value: str) -> int | None:
@@ -79,21 +167,49 @@ def recompute_match(job: JobPosting) -> JobMatch:
     context = profile_context(job.owner)
     profile = refresh_profile_embedding(job.owner)
     job = refresh_job_embedding(job)
-    facts = list(ProfileFact.objects.filter(owner=job.owner).order_by('-verified_by_user', 'fact_type', 'title')[:250])
+    facts = list(authoritative_facts(job.owner).order_by('-verified_by_user', 'fact_type', 'title')[:250])
     fact_text = '\n'.join(f'{fact.title}: {fact.statement}' for fact in facts)
-    profile_blob = fact_text.lower()
+    # Direct capability coverage must be grounded in confirmed evidence.  We
+    # still use all facts for semantic retrieval, allowing the UI to show
+    # relevant but unconfirmed context without overstating a match.
+    verified_profile_blob = '\n'.join(
+        f'{fact.title}: {fact.statement}' for fact in facts
+        if fact.verified_by_user or fact.lifecycle == 'verified'
+    ).lower()
     job_blob = job.description_text.lower()
-    job_skills = list(dict.fromkeys(
-        [req.normalized_value or req.text for req in job.requirements.filter(category='skill')]
-        or detect_skills(job.description_text)
-    ))
-    covered = [skill for skill in job_skills if _contains(profile_blob, skill)]
-    missing = [skill for skill in job_skills if skill not in covered]
-    skill_score = round(len(covered) / max(1, len(job_skills)) * 100)
+    requirements = _normalized_requirements(job)
+    if not requirements:
+        requirements = [
+            {'name': skill.lower(), 'required': True, 'source_text': skill}
+            for skill in detect_skills(job.description_text)
+        ]
+    required_requirements = [item for item in requirements if item['required']]
+    preferred_requirements = [item for item in requirements if not item['required']]
+    covered_requirements = [
+        item for item in requirements if _requirement_supported(verified_profile_blob, item['name'])
+    ]
+    covered = [item['name'] for item in covered_requirements]
+    # Only unmet required capabilities are visible gaps. Preferred capabilities
+    # are recorded separately, so candidates are not penalized as though a nice
+    # to have were an eligibility condition.
+    missing = [
+        item['name'] for item in required_requirements
+        if item['name'] not in covered
+    ]
+    preferred_gaps = [
+        item['name'] for item in preferred_requirements
+        if item['name'] not in covered
+    ]
+    required_score = 100 * sum(item['name'] in covered for item in required_requirements) / max(1, len(required_requirements))
+    preferred_score = 100 * sum(item['name'] in covered for item in preferred_requirements) / max(1, len(preferred_requirements)) if preferred_requirements else 100
+    skill_score = round(required_score * 0.85 + preferred_score * 0.15)
 
     supporting_by_id: dict[int, dict[str, Any]] = {}
     for fact in facts:
-        overlap = [skill for skill in covered if _contains(f'{fact.title} {fact.statement}', skill)]
+        overlap = [
+            skill for skill in covered
+            if _requirement_supported(f'{fact.title} {fact.statement}', skill)
+        ]
         if overlap:
             supporting_by_id[fact.id] = {
                 'fact_id': fact.id,
@@ -126,15 +242,19 @@ def recompute_match(job: JobPosting) -> JobMatch:
         key=lambda fact: (-int(fact['verified']), -fact.get('semantic_similarity', 0), fact['title'].lower()),
     )
     verified_support = [fact for fact in supporting if fact['verified']]
+    direct_evidence = [fact for fact in supporting if fact['skills']]
+    verified_direct_evidence = [fact for fact in direct_evidence if fact['verified']]
+    # Semantic neighbours are helpful context, but cannot on their own saturate
+    # the evidence signal. Direct, verified capability evidence carries most of
+    # the score.
     evidence_score = min(
         100,
-        len(supporting) * 10 + len(verified_support) * 8 + min(40, len(covered) * 10),
+        20 + len(direct_evidence) * 8 + len(verified_direct_evidence) * 12
+        + min(20, len(verified_support) * 2),
     )
 
     targets = [str(value).lower() for value in context['profile'].get('target_roles', [])]
-    title_tokens = set(keywords(job.title, limit=20))
-    target_tokens = set(keywords(' '.join(targets), limit=60))
-    direction_score = round(100 * len(title_tokens & target_tokens) / max(1, len(title_tokens))) if targets else 55
+    direction_score = _role_direction_score(job.title, targets)
 
     industries = [str(value).lower() for value in context['profile'].get('target_industries', [])]
     domain_score = 80 if any(value in job_blob or value in job.company.lower() for value in industries) else 55 if industries else 60
@@ -146,8 +266,15 @@ def recompute_match(job: JobPosting) -> JobMatch:
     semantic_score = round(max(0.0, semantic_similarity) * 100)
 
     signals = [
-        _signal('skills', 'Skills and depth', skill_score, f'{len(covered)} of {len(job_skills)} visible skills are supported.', covered),
-        _signal('evidence', 'Experience evidence', evidence_score, f'{len(supporting)} profile facts support this role; {len(verified_support)} are verified.', supporting[:12]),
+        _signal(
+            'skills',
+            'Required and preferred capabilities',
+            skill_score,
+            f'{sum(item["name"] in covered for item in required_requirements)} of {len(required_requirements)} required and '
+            f'{sum(item["name"] in covered for item in preferred_requirements)} of {len(preferred_requirements)} preferred capabilities are supported.',
+            covered,
+        ),
+        _signal('evidence', 'Experience evidence', evidence_score, f'{len(direct_evidence)} facts directly support role capabilities; {len(verified_direct_evidence)} are verified.', supporting[:12]),
         _signal(
             'semantic',
             'Whole-profile semantic fit',
@@ -174,20 +301,28 @@ def recompute_match(job: JobPosting) -> JobMatch:
     confidence = 'high' if confidence_points >= 24 else 'medium' if confidence_points >= 10 else 'low'
     summary = (
         f'{"Strong" if score >= 80 else "Promising" if score >= 65 else "Possible" if score >= 50 else "Low"} fit: '
-        f'{len(covered)} supported skills, {len(missing)} visible gaps, eligibility {hard_status}.'
+        f'{len(covered)} supported capabilities, {len(missing)} required gaps, '
+        f'{len(preferred_gaps)} preferred gaps, eligibility {hard_status}.'
     )
     explanation = {
         'summary': summary,
         'covered_skills': covered,
-        'job_skills': job_skills,
+        'job_skills': [item['name'] for item in requirements],
+        'required_capabilities': [item['name'] for item in required_requirements],
+        'preferred_capabilities': [item['name'] for item in preferred_requirements],
+        'preferred_gaps': preferred_gaps,
         'eligibility_failures': failures,
         'eligibility_uncertainties': uncertainties,
         'semantic_similarity': round(semantic_similarity, 4),
         'embedding_model': job.embedding_model,
         'embedding_provider': job.embedding_provider,
         'signals': signals,
-        'score_version': '2026-08-v3-pgvector',
+        'score_version': '2026-10-v4-capability-aware',
     }
+    # Keep the raw score as the source of truth. The calibrated score makes the
+    # profile's chosen ready-to-apply threshold visually consistent at 80.
+    explanation['normalized_score'] = normalize_match_score(score, context['profile'].get('minimum_match_score'))
+    explanation['profile_minimum_score'] = context['profile'].get('minimum_match_score', 50)
     match, _ = JobMatch.objects.update_or_create(
         owner=job.owner,
         job=job,

@@ -12,6 +12,8 @@ from core.domain.embeddings import (
     refresh_profile_embedding,
 )
 from core.domain.matching import recompute_match
+from core.domain.profiles import authoritative_facts
+from core.domain.scoring import normalize_match_score
 from core.models import CandidateProfile, JobPosting, JobRequirement, ProfileFact
 
 
@@ -62,6 +64,11 @@ class VectorMatchingTests(TestCase):
         self.assertIn('Reliable platform delivery', profile_embedding_text(self.user))
         self.assertIn('required skill: Python', job_embedding_text(self.job))
 
+    def test_normalized_score_anchors_profile_threshold_at_eighty(self):
+        self.assertEqual(normalize_match_score(50, 50), 80)
+        self.assertEqual(normalize_match_score(60, 60), 80)
+        self.assertEqual(normalize_match_score(100, 50), 100)
+
     def test_refresh_persists_fixed_width_pgvector_values_and_metadata(self):
         refresh_fact_embedding(self.fact)
         refresh_profile_embedding(self.user)
@@ -83,7 +90,7 @@ class VectorMatchingTests(TestCase):
         semantic = match.signals.get(kind='semantic')
         self.assertGreater(semantic.score, 0)
         self.assertEqual(semantic.weight, 25)
-        self.assertEqual(match.explanation_json['score_version'], '2026-08-v3-pgvector')
+        self.assertEqual(match.explanation_json['score_version'], '2026-10-v4-capability-aware')
         self.assertEqual(match.explanation_json['embedding_provider'], 'local_fallback')
         self.assertIn(self.fact.id, [item['fact_id'] for item in match.supporting_facts])
 
@@ -97,6 +104,49 @@ class VectorMatchingTests(TestCase):
         refresh_job_embedding(self.job)
         self.job.refresh_from_db()
         self.assertNotEqual(self.job.embedding_content_hash, original_hash)
+
+    def test_match_splits_requirement_prose_and_does_not_count_preferred_gaps_as_required(self):
+        JobRequirement.objects.all().delete()
+        JobRequirement.objects.create(
+            owner=self.user,
+            job=self.job,
+            kind='required',
+            category='skill',
+            text='In-depth experience with Python and Django web applications.',
+            normalized_value='in-depth experience with python and django web applications',
+            is_hard=True,
+        )
+        JobRequirement.objects.create(
+            owner=self.user,
+            job=self.job,
+            kind='preferred',
+            category='skill',
+            text='React and LLM evaluation experience.',
+            normalized_value='react and llm evaluation experience',
+            is_hard=False,
+        )
+
+        match = recompute_match(self.job)
+
+        self.assertIn('python', match.explanation_json['covered_skills'])
+        self.assertIn('django', match.explanation_json['covered_skills'])
+        self.assertNotIn('react', match.missing_requirements)
+        self.assertIn('react', match.explanation_json['preferred_gaps'])
+
+    def test_candidate_source_of_truth_overrides_older_imported_facts(self):
+        ProfileFact.objects.create(
+            owner=self.user,
+            fact_type='skill',
+            title='Current LinkedIn skill',
+            statement='Current LinkedIn skill is the candidate-designated source of truth.',
+            metadata={'source_of_truth': True, 'source': 'linkedin'},
+            verified_by_user=True,
+            lifecycle='verified',
+        )
+
+        facts = list(authoritative_facts(self.user))
+
+        self.assertEqual([fact.title for fact in facts], ['Current LinkedIn skill'])
 
     @patch('core.ai._openai_available', return_value=True)
     @patch('core.ai.openai_client')

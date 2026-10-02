@@ -46,6 +46,11 @@ import { RealtimeService } from '../services/realtime.service';
           <label>Employment types <span class="field-hint">Comma separated</span><input [(ngModel)]="employmentTypesText" name="employmentTypes" placeholder="full-time, contract"></label>
           <label>Minimum compensation<input type="number" [(ngModel)]="profile.minimum_compensation" name="minimumCompensation" placeholder="150000"></label>
           <label>Currency<select [(ngModel)]="profile.compensation_currency" name="compensationCurrency"><option>CAD</option><option>USD</option><option>EUR</option><option>GBP</option></select></label>
+          <label class="match-threshold-control">Minimum evidence fit
+            <input type="range" min="1" max="99" step="1" [(ngModel)]="profile.minimum_match_score" name="minimumMatchScore">
+            <span><strong>{{ profile.minimum_match_score }}</strong> raw = <strong>{{ normalizedThreshold() }}</strong> calibrated</span>
+            <small>Roles at or above this raw score are good enough for Forth to prepare. Calibrated scores make this decision point 80.</small>
+          </label>
         </div>
         <label>Professional summary<textarea rows="6" [(ngModel)]="profile.professional_summary" name="professionalSummary" placeholder="Describe what you are great at, the work you enjoy, and what you want next."></textarea></label>
         <div class="action-row"><button class="btn-primary" type="button" (click)="saveProfile()" [disabled]="savingProfile"><span class="spinner" *ngIf="savingProfile" aria-hidden="true"></span>{{ savingProfile ? 'Saving…' : 'Save search brief' }}</button><span class="muted">Changes immediately affect future scoring.</span></div>
@@ -241,6 +246,8 @@ export class ProfileComponent implements OnInit, OnDestroy {
 
   values(text: string): string[] { return text.split(',').map((value) => value.trim()).filter(Boolean); }
 
+  normalizedThreshold(): number { return 80; }
+
   resumeOnboarding(): void {
     sessionStorage.removeItem('forth_onboarding_dismissed');
     window.location.reload();
@@ -256,6 +263,7 @@ export class ProfileComponent implements OnInit, OnDestroy {
       location: this.profile.location,
       minimum_compensation: this.profile.minimum_compensation,
       compensation_currency: this.profile.compensation_currency,
+      minimum_match_score: this.profile.minimum_match_score,
       target_roles: this.values(this.targetRolesText),
       target_industries: this.values(this.targetIndustriesText),
       authorized_countries: this.values(this.authorizedCountriesText),

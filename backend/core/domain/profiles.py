@@ -14,6 +14,18 @@ def candidate_profile(owner) -> CandidateProfile:
     return profile
 
 
+def authoritative_facts(owner):
+    """Return the candidate-designated source of truth when one is available.
+
+    Imported material can be useful retrieval context, but it must not override
+    a source the candidate has explicitly designated as authoritative (such as
+    a current LinkedIn profile).  Older facts remain stored for auditability.
+    """
+    facts = ProfileFact.objects.filter(owner=owner)
+    authoritative = facts.filter(metadata__source_of_truth=True)
+    return authoritative if authoritative.exists() else facts
+
+
 def compute_profile_completeness(owner) -> int:
     profile = candidate_profile(owner)
     checks = [
@@ -43,7 +55,7 @@ def compute_profile_completeness(owner) -> int:
 
 def profile_context(owner, *, verified_only: bool = False) -> dict[str, Any]:
     profile = candidate_profile(owner)
-    facts = ProfileFact.objects.filter(owner=owner)
+    facts = authoritative_facts(owner)
     if verified_only:
         facts = facts.filter(lifecycle='verified') | facts.filter(verified_by_user=True)
     facts = facts.order_by('-verified_by_user', 'fact_type', 'title')[:250]
@@ -60,6 +72,7 @@ def profile_context(owner, *, verified_only: bool = False) -> dict[str, Any]:
             'employment_types': profile.employment_types,
             'minimum_compensation': profile.minimum_compensation,
             'compensation_currency': profile.compensation_currency,
+            'minimum_match_score': profile.minimum_match_score,
             'excluded_companies': profile.excluded_companies,
             'completeness': compute_profile_completeness(owner),
         },

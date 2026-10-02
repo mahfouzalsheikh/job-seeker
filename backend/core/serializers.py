@@ -31,6 +31,7 @@ from .models import (
     ResumeClaim,
     SourceRun,
 )
+from .domain.scoring import normalize_match_score
 
 
 class OwnerScopedRelationsMixin:
@@ -133,7 +134,7 @@ class CandidateProfileSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'headline', 'professional_summary', 'target_roles', 'target_industries',
             'location', 'authorized_countries', 'work_modes', 'employment_types',
-            'minimum_compensation', 'compensation_currency', 'excluded_companies',
+            'minimum_compensation', 'compensation_currency', 'minimum_match_score', 'excluded_companies',
             'completeness', 'last_reviewed_at', 'onboarding_state',
             'onboarding_completed_at', 'embedding_model', 'embedding_provider',
             'embedding_updated_at', 'created_at', 'updated_at',
@@ -205,15 +206,56 @@ class JobMatchSerializer(serializers.ModelSerializer):
     job_title = serializers.CharField(source='job.title', read_only=True)
     company = serializers.CharField(source='job.company', read_only=True)
     signals = MatchSignalSerializer(many=True, read_only=True)
+    normalized_score = serializers.SerializerMethodField()
+    profile_minimum_score = serializers.SerializerMethodField()
+    meets_profile_threshold = serializers.SerializerMethodField()
+
+    def _minimum_score(self, obj):
+        return getattr(getattr(obj.owner, 'candidate_profile', None), 'minimum_match_score', 50)
+
+    def get_normalized_score(self, obj):
+        return normalize_match_score(obj.score, self._minimum_score(obj))
+
+    def get_profile_minimum_score(self, obj):
+        return self._minimum_score(obj)
+
+    def get_meets_profile_threshold(self, obj):
+        return obj.score >= self._minimum_score(obj)
 
     class Meta:
         model = JobMatch
         fields = [
             'id', 'job', 'job_title', 'company', 'score', 'hard_filter_status',
             'explanation_json', 'missing_requirements', 'supporting_facts',
-            'confidence', 'computed_at', 'created_at', 'updated_at',
+            'confidence', 'normalized_score', 'profile_minimum_score', 'meets_profile_threshold',
+            'computed_at', 'created_at', 'updated_at',
             'signals',
         ]
+        read_only_fields = fields
+
+
+class JobMatchSummarySerializer(serializers.ModelSerializer):
+    """The small match payload used in high-volume board and list views."""
+
+    normalized_score = serializers.SerializerMethodField()
+    profile_minimum_score = serializers.SerializerMethodField()
+    meets_profile_threshold = serializers.SerializerMethodField()
+
+    def _minimum_score(self, obj):
+        return getattr(getattr(obj.owner, 'candidate_profile', None), 'minimum_match_score', 50)
+
+    def get_normalized_score(self, obj):
+        return normalize_match_score(obj.score, self._minimum_score(obj))
+
+    def get_profile_minimum_score(self, obj):
+        return self._minimum_score(obj)
+
+    def get_meets_profile_threshold(self, obj):
+        return obj.score >= self._minimum_score(obj)
+
+    class Meta:
+        model = JobMatch
+        fields = ['score', 'normalized_score', 'profile_minimum_score', 'meets_profile_threshold', 'hard_filter_status', 'confidence']
         read_only_fields = fields
 
 
@@ -238,6 +280,15 @@ class JobPostingSerializer(OwnerScopedRelationsMixin, serializers.ModelSerialize
             'extracted_json', 'discovered_at', 'created_at', 'updated_at', 'match',
             'embedding_model', 'embedding_provider', 'embedding_updated_at',
         ]
+
+
+class JobPostingSummarySerializer(serializers.ModelSerializer):
+    match = JobMatchSummarySerializer(read_only=True)
+
+    class Meta:
+        model = JobPosting
+        fields = ['id', 'title', 'company', 'location', 'remote_policy', 'freshness_status', 'match']
+        read_only_fields = fields
 
 
 class JobImportSerializer(serializers.Serializer):
@@ -377,6 +428,8 @@ class ConversationThreadSerializer(serializers.ModelSerializer):
 class ApplicationSerializer(OwnerScopedRelationsMixin, serializers.ModelSerializer):
     job_detail = JobPostingSerializer(source='job', read_only=True)
     resume_title = serializers.CharField(source='resume.title', read_only=True)
+    resume_detail = ResumeSerializer(source='resume', read_only=True)
+    cover_letters = serializers.SerializerMethodField()
     events = ApplicationEventSerializer(many=True, read_only=True)
     artifacts = ArtifactSerializer(many=True, read_only=True)
     owner_related_fields = {'job': JobPosting, 'resume': Resume}
@@ -385,11 +438,22 @@ class ApplicationSerializer(OwnerScopedRelationsMixin, serializers.ModelSerializ
         model = Application
         fields = [
             'id', 'job', 'job_detail', 'status', 'resume', 'resume_title',
+            'resume_detail', 'cover_letters',
             'applied_at', 'follow_up_at', 'outcome', 'notes',
             'contact_name', 'contact_email', 'events', 'artifacts',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['events', 'artifacts', 'created_at', 'updated_at']
+
+    def get_cover_letters(self, obj):
+        """Expose every version connected to the application's job.
+
+        An application has no direct cover-letter FK, but a cover letter is
+        always tied to its target job.  Returning those records here makes the
+        relationship available to the workspace without duplicating data.
+        """
+        letters = obj.job.cover_letters.filter(owner=obj.owner).order_by('-updated_at', '-id')
+        return CoverLetterSerializer(letters, many=True, context=self.context).data
 
     def validate(self, attrs):
         status = attrs.get('status', getattr(self.instance, 'status', None))
@@ -399,3 +463,18 @@ class ApplicationSerializer(OwnerScopedRelationsMixin, serializers.ModelSerializ
         if status == 'applied' and not attrs.get('applied_at') and not getattr(self.instance, 'applied_at', None):
             attrs['applied_at'] = timezone.now()
         return attrs
+
+
+class ApplicationSummarySerializer(serializers.ModelSerializer):
+    """Fast card payload; the full workspace is loaded only after a click."""
+    job_detail = JobPostingSummarySerializer(source='job', read_only=True)
+    resume_title = serializers.CharField(source='resume.title', read_only=True)
+    artifact_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Application
+        fields = [
+            'id', 'job', 'job_detail', 'status', 'resume', 'resume_title', 'artifact_count',
+            'applied_at', 'follow_up_at', 'contact_name', 'updated_at', 'created_at',
+        ]
+        read_only_fields = fields

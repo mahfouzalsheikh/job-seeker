@@ -49,6 +49,7 @@ export interface CandidateProfile {
   employment_types: string[];
   minimum_compensation: number | null;
   compensation_currency: string;
+  minimum_match_score: number;
   excluded_companies: string[];
   completeness: number;
   onboarding_state: any;
@@ -111,6 +112,9 @@ export interface JobMatch {
   id: number;
   job: number;
   score: number;
+  normalized_score: number;
+  profile_minimum_score: number;
+  meets_profile_threshold: boolean;
   confidence: string;
   explanation_json: any;
   missing_requirements: string[];
@@ -175,6 +179,8 @@ export interface CoverLetter {
   validation: any;
   approved: boolean;
   version: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Artifact {
@@ -234,12 +240,17 @@ export interface ApplicationRecord {
   status: string;
   resume: number | null;
   resume_title: string;
+  artifact_count?: number;
+  resume_detail: Resume | null;
+  cover_letters: CoverLetter[];
   applied_at: string | null;
   follow_up_at: string | null;
   outcome: string;
   notes: string;
   contact_name: string;
   contact_email: string;
+  created_at: string;
+  updated_at: string;
   events: any[];
   artifacts: any[];
 }
@@ -380,8 +391,20 @@ export class ApiService {
     return this.http.post(`${environment.apiBaseUrl}/resumes/${id}/export_pdf/`, {}, { responseType: 'blob' });
   }
 
+  exportCoverLetterMarkdown(id: number): Observable<Blob> {
+    return this.http.get(`${environment.apiBaseUrl}/cover-letters/${id}/export_markdown/`, { responseType: 'blob' });
+  }
+
+  exportCoverLetterPdf(id: number): Observable<Blob> {
+    return this.http.post(`${environment.apiBaseUrl}/cover-letters/${id}/export_pdf/`, {}, { responseType: 'blob' });
+  }
+
   applications(params: Record<string, string> = {}): Observable<Paged<ApplicationRecord>> {
     return this.http.get<Paged<ApplicationRecord>>(`${environment.apiBaseUrl}/applications/`, { params: new HttpParams({ fromObject: params }) });
+  }
+
+  application(id: number): Observable<ApplicationRecord> {
+    return this.http.get<ApplicationRecord>(`${environment.apiBaseUrl}/applications/${id}/`);
   }
 
   updateApplication(id: number, payload: Partial<ApplicationRecord>): Observable<ApplicationRecord> {
@@ -392,8 +415,8 @@ export class ApiService {
     return this.http.post<ApprovalRequest>(`${environment.apiBaseUrl}/applications/${applicationId}/request_render/`, {});
   }
 
-  artifacts(): Observable<Paged<Artifact>> {
-    return this.http.get<Paged<Artifact>>(`${environment.apiBaseUrl}/artifacts/`);
+  artifacts(params: Record<string, string> = {}): Observable<Paged<Artifact>> {
+    return this.http.get<Paged<Artifact>>(`${environment.apiBaseUrl}/artifacts/`, { params: new HttpParams({ fromObject: params }) });
   }
 
   downloadArtifact(id: number): Observable<Blob> {

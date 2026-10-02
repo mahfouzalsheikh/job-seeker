@@ -21,7 +21,7 @@
   --blue: #2877cc;
   --blue-soft: #eaf4ff;
   --sidebar: #10251f;
-  --content-width: 1480px;
+  --content-width: 100%;
   --shadow-xs: 0 1px 2px rgba(23, 32, 51, 0.04);
   --shadow-sm: 0 5px 16px rgba(31, 39, 64, 0.06);
   --shadow-md: 0 16px 40px rgba(31, 39, 64, 0.1);
@@ -38,6 +38,9 @@
 
 html {
   min-height: 100%;
+  /* Scale the whole interface with the available display, particularly on
+     high-density and ultra-wide monitors where a fixed 16px root is tiny. */
+  font-size: clamp(17px, 0.9vw, 21px);
   background: var(--bg);
   scroll-behavior: smooth;
 }
@@ -46,7 +49,7 @@ body {
   min-height: 100%;
   margin: 0;
   color: var(--ink);
-  font: 400 15px/1.55 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font: 400 1rem/1.65 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background:
     radial-gradient(circle at 75% -10%, rgba(91, 91, 214, 0.06), transparent 30rem),
     var(--bg);
@@ -317,9 +320,9 @@ h3 {
 
 /* Page foundations */
 .page {
-  width: min(var(--content-width), calc(100vw - 246px));
+  width: 100%;
   margin: 0 auto;
-  padding: 36px clamp(24px, 3vw, 48px) 64px;
+  padding: 40px clamp(28px, 3.2vw, 72px) 72px;
 }
 
 .page-head,
@@ -336,7 +339,7 @@ h3 {
 }
 
 .page-head h1 {
-  max-width: 760px;
+  max-width: 900px;
   margin: 3px 0 7px;
   font-size: clamp(1.85rem, 3vw, 2.55rem);
   line-height: 1.12;
@@ -345,7 +348,7 @@ h3 {
 .page-intro,
 .panel-head p,
 .section-copy {
-  max-width: 680px;
+  max-width: 780px;
   margin: 0;
   color: var(--muted);
   line-height: 1.5;
@@ -969,6 +972,11 @@ a.metric:hover {
   background: var(--good-soft);
 }
 
+.fit-badge.good {
+  color: var(--good);
+  background: var(--good-soft);
+}
+
 .fit-score small,
 .fit-badge small,
 .job-row .fit-score small {
@@ -980,10 +988,37 @@ a.metric:hover {
 }
 
 .fit-badge {
-  width: 62px;
+  min-width: 74px;
   height: 62px;
   border-radius: 16px;
   font-size: 1.22rem;
+}
+
+.match-threshold-control {
+  grid-column: 1 / -1;
+}
+
+.match-threshold-control input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.match-threshold-control span,
+.match-threshold-control small {
+  display: block;
+}
+
+.match-threshold-control span {
+  margin-top: 5px;
+  color: var(--ink);
+  font-size: 0.83rem;
+}
+
+.match-threshold-control small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.73rem;
+  line-height: 1.35;
 }
 
 .status-chip {
@@ -1367,12 +1402,10 @@ a.metric:hover {
 
 .pipeline-board {
   display: grid;
-  grid-template-columns: repeat(11, minmax(235px, 1fr));
-  gap: 12px;
-  overflow-x: auto;
-  margin: 0 -4px 22px;
-  padding: 4px 4px 16px;
-  scroll-snap-type: x proximity;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 14px;
+  min-width: 0;
+  margin: 0 0 22px;
 }
 
 .pipeline-board::-webkit-scrollbar,
@@ -1390,12 +1423,21 @@ a.metric:hover {
 }
 
 .pipeline-col {
-  min-height: 330px;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  min-height: 160px;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #f1f3f8;
-  scroll-snap-align: start;
+  transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+
+.pipeline-col.drop-target {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .pipeline-col-head {
@@ -1426,9 +1468,47 @@ a.metric:hover {
 .application-card {
   display: grid;
   justify-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
   padding: 13px;
   box-shadow: var(--shadow-xs);
+  text-align: left;
+  cursor: grab;
+  transition: opacity .15s ease, transform .15s ease, box-shadow .15s ease;
 }
+
+.application-card:active { cursor: grabbing; }
+.application-card.dragging { opacity: .45; transform: rotate(1deg); }
+
+.application-card > strong { display: -webkit-box; min-width: 0; overflow: hidden; font-size: .92rem; line-height: 1.3; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.application-card > p { display: -webkit-box; min-width: 0; margin: 0; overflow: hidden; color: var(--muted); font-size: .77rem; line-height: 1.4; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.card-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.application-card-footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 9px; min-width: 0; padding-top: 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: .69rem; }
+.application-card-footer span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.application-card-footer span:last-child { min-width: 0; font-size: .64rem; white-space: nowrap; }
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 6px 0 28px;
+  color: var(--muted);
+  font-size: .86rem;
+  font-weight: 700;
+}
+
+.material-downloads { display: grid; gap: 9px; }
+.material-downloads article { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-subtle); }
+.material-downloads article > div:nth-child(2) { display: grid; min-width: 0; }
+.material-downloads strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.material-downloads small { color: var(--muted); font-size: .8rem; }
+.material-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; color: var(--accent-strong); background: var(--accent-soft); font-weight: 800; font-size: .75rem; }
+.material-icon.letter { color: #6245b8; background: #eee8ff; }
+.material-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 
 .application-card:hover,
 .application-card.selected {
@@ -1455,9 +1535,17 @@ a.metric:hover {
   font-size: 0.72rem;
 }
 
-.application-detail {
-  max-width: 1040px;
+.board-status {
+  min-height: 1.25rem;
+  margin: -10px 0 20px;
+  color: var(--muted);
+  font-size: .78rem;
 }
+
+.application-modal-backdrop { position: fixed; z-index: 120; inset: 0; display: grid; place-items: center; padding: clamp(16px, 3vw, 56px); overflow-y: auto; background: rgba(12, 29, 24, .48); backdrop-filter: blur(5px); }
+.application-detail { width: min(1120px, 100%); max-height: calc(100vh - clamp(32px, 6vw, 112px)); margin: auto; overflow-y: auto; box-shadow: 0 28px 80px rgba(12, 29, 24, .28); }
+.modal-head-actions { display: flex; align-items: flex-start; gap: 12px; }
+.modal-head-actions .icon-button { width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 50%; color: var(--ink-soft); background: var(--panel-subtle); font-size: 1.45rem; line-height: 1; }
 
 .section-divider {
   display: flex;
@@ -1791,6 +1879,8 @@ a.metric:hover {
 }
 
 @media (max-width: 680px) {
+  html { font-size: 16px; }
+
   .page {
     padding: 24px 15px 46px;
   }
@@ -1898,9 +1988,14 @@ a.metric:hover {
     align-items: flex-start;
   }
 
-  .pipeline-board {
-    grid-template-columns: repeat(11, minmax(82vw, 1fr));
-  }
+  .pipeline-board { grid-template-columns: 1fr; }
+
+  .pagination { justify-content: space-between; gap: 8px; }
+  .pagination .btn-secondary { padding: 8px 10px; }
+  .material-downloads article { grid-template-columns: 36px minmax(0, 1fr); }
+  .material-actions { grid-column: 2; justify-content: flex-start; }
+  .application-modal-backdrop { align-items: end; padding: 0; }
+  .application-detail { width: 100%; max-height: min(88vh, 900px); border-radius: 20px 20px 0 0; }
 
   .action-row .btn-primary,
   .action-row .btn-secondary {
@@ -1916,6 +2011,17 @@ a.metric:hover {
     padding: 24px;
     box-shadow: none;
   }
+}
+
+/* Make productive layouts take advantage of very wide screens rather than
+   leaving a large, unused gutter around the application. */
+@media (min-width: 1900px) {
+  .page { padding-inline: clamp(64px, 4vw, 120px); }
+  .panel { padding: 28px; }
+  .pipeline-board { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+  .artifact-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .today-grid { grid-template-columns: minmax(0, 1.7fr) minmax(390px, .6fr); gap: 28px; }
+  .concierge-layout { grid-template-columns: minmax(0, 1.8fr) minmax(390px, .55fr); gap: 28px; }
 }
 
 @media (max-width: 420px) {

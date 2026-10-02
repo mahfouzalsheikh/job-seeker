@@ -10,6 +10,7 @@ from pgvector.django import CosineDistance
 
 from core.ai import clean_text, cosine_similarity, embed_text_result, stable_hash
 from core.models import CandidatePreference, CandidateProfile, JobPosting, ProfileFact
+from core.domain.profiles import authoritative_facts
 
 
 def _line(label: str, value: Any) -> str:
@@ -36,7 +37,7 @@ def profile_embedding_text(owner) -> str:
             f'{profile.compensation_currency} {profile.minimum_compensation}' if profile.minimum_compensation else '',
         ),
     ]
-    facts = ProfileFact.objects.filter(owner=owner).order_by(
+    facts = authoritative_facts(owner).order_by(
         '-verified_by_user', '-confidence', 'fact_type', 'id',
     )[:250]
     if facts:
@@ -170,12 +171,12 @@ def nearest_profile_facts(owner, query_embedding: Sequence[float] | None, *, lim
 
 
 def rank_jobs_by_profile(queryset, profile: CandidateProfile):
-    """Order a PostgreSQL job queryset by candidate-vector proximity."""
+    """Keep discovery lists chronological while preserving score annotations."""
     if connection.vendor != 'postgresql' or profile.semantic_embedding is None:
-        return queryset.order_by('-match__score', '-posted_at', '-discovered_at')
+        return queryset.order_by('-discovered_at', '-id')
     return queryset.annotate(
         semantic_distance=CosineDistance('semantic_embedding', profile.semantic_embedding),
-    ).order_by('-match__score', 'semantic_distance', '-posted_at', '-discovered_at')
+    ).order_by('-discovered_at', '-id')
 
 
 def rank_jobs_by_query(queryset, query: str):

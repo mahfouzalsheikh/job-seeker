@@ -38,6 +38,7 @@ from .domain.documents import render_pdf, validate_resume_claims
 from .serializers import (
     AgentRunSerializer,
     ApplicationEventSerializer,
+    ApplicationSummarySerializer,
     ApplicationSerializer,
     ApprovalRequestSerializer,
     ArtifactSerializer,
@@ -214,7 +215,8 @@ class CandidatePreferenceViewSet(OwnedViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         category = self.request.query_params.get('category')
-        return qs.filter(category=category) if category else qs
+        qs = qs.filter(category=category) if category else qs
+        return qs.order_by('-updated_at', '-id')
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
@@ -244,7 +246,7 @@ class ProfileFactViewSet(OwnedViewSet):
             qs = qs.filter(verified_by_user=(verified == 'true'))
         if search:
             qs = qs.filter(Q(title__icontains=search) | Q(statement__icontains=search))
-        return qs
+        return qs.order_by('-updated_at', '-id')
 
     def perform_create(self, serializer):
         fact = serializer.save(owner=self.request.user)
@@ -283,7 +285,7 @@ class JobSourceViewSet(OwnedViewSet):
     queryset = JobSource.objects.all()
 
     def get_queryset(self):
-        return super().get_queryset().annotate(job_count=Count('jobs'))
+        return super().get_queryset().annotate(job_count=Count('jobs')).order_by('-updated_at', '-id')
 
     @action(detail=True, methods=['post'])
     def run(self, request, pk=None):
@@ -345,7 +347,7 @@ class JobPostingViewSet(OwnedViewSet):
             return rank_jobs_by_query(qs, semantic_query)
         profile = CandidateProfile.objects.filter(owner=self.request.user).first()
         if profile is None:
-            return qs.order_by('-match__score', '-posted_at', '-discovered_at')
+            return qs.order_by('-discovered_at', '-id')
         from .domain.embeddings import rank_jobs_by_profile
 
         return rank_jobs_by_profile(qs, profile)
@@ -442,7 +444,7 @@ class ResumeViewSet(OwnedViewSet):
             qs = qs.filter(kind=kind)
         if job_id:
             qs = qs.filter(target_job_id=job_id)
-        return qs
+        return qs.order_by('-updated_at', '-id')
 
     @action(detail=False, methods=['post'])
     def tailor(self, request):
@@ -499,7 +501,25 @@ class CoverLetterViewSet(OwnedViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         job_id = self.request.query_params.get('job')
-        return qs.filter(target_job_id=job_id) if job_id else qs
+        qs = qs.filter(target_job_id=job_id) if job_id else qs
+        return qs.order_by('-updated_at', '-id')
+
+    @action(detail=True, methods=['get'])
+    def export_markdown(self, request, pk=None):
+        letter = self.get_object()
+        response = HttpResponse(letter.content_markdown, content_type='text/markdown')
+        response['Content-Disposition'] = f'attachment; filename="{letter.title.lower().replace(" ", "-")}.md"'
+        return response
+
+    @action(detail=True, methods=['post'])
+    def export_pdf(self, request, pk=None):
+        letter = self.get_object()
+        artifact = render_pdf(
+            owner=request.user, title=letter.title, markdown=letter.content_markdown,
+            kind='cover_letter_pdf', cover_letter=letter,
+        )
+        filename = Path(artifact.file.name).name
+        return FileResponse(artifact.file.open('rb'), as_attachment=True, filename=filename, content_type=artifact.mime_type)
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
@@ -514,7 +534,10 @@ class CoverLetterViewSet(OwnedViewSet):
 
 class ApplicationViewSet(OwnedViewSet):
     serializer_class = ApplicationSerializer
-    queryset = Application.objects.select_related('job', 'resume').prefetch_related('events', 'artifacts').all()
+    queryset = Application.objects.all()
+
+    def get_serializer_class(self):
+        return ApplicationSummarySerializer if self.action == 'list' else ApplicationSerializer
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -524,7 +547,10 @@ class ApplicationViewSet(OwnedViewSet):
             qs = qs.filter(status=status_value)
         if search:
             qs = qs.filter(Q(job__title__icontains=search) | Q(job__company__icontains=search) | Q(notes__icontains=search))
-        return qs
+        if self.action == 'list':
+            return qs.select_related('job', 'job__match', 'resume').annotate(artifact_count=Count('artifacts', distinct=True)).order_by('-updated_at', '-id')
+        qs = qs.select_related('job', 'job__match', 'resume', 'resume__target_job').prefetch_related('events', 'artifacts', 'job__cover_letters')
+        return qs.order_by('-updated_at', '-id')
 
     def perform_create(self, serializer):
         application = serializer.save(owner=self.request.user)
@@ -583,12 +609,15 @@ class ApplicationEventViewSet(OwnedViewSet):
         application = self.request.query_params.get('application')
         if application:
             qs = qs.filter(application_id=application)
-        return qs
+        return qs.order_by('-happened_at', '-id')
 
 
 class ArtifactViewSet(OwnedViewSet):
     serializer_class = ArtifactSerializer
     queryset = Artifact.objects.select_related('application', 'resume').all()
+
+    def get_queryset(self):
+        return super().get_queryset().order_by('-updated_at', '-id')
 
     @action(detail=True, methods=['get'])
     def download(self, request, pk=None):
@@ -607,6 +636,9 @@ class ArtifactViewSet(OwnedViewSet):
 class ConversationThreadViewSet(OwnedViewSet):
     serializer_class = ConversationThreadSerializer
     queryset = ConversationThread.objects.prefetch_related('messages').all()
+
+    def get_queryset(self):
+        return super().get_queryset().order_by('-updated_at', '-id')
 
     @action(detail=True, methods=['post'])
     def send(self, request, pk=None):
@@ -656,7 +688,8 @@ class ApprovalRequestViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = self.queryset.filter(owner=self.request.user)
         status_value = self.request.query_params.get('status')
-        return qs.filter(status=status_value) if status_value else qs
+        qs = qs.filter(status=status_value) if status_value else qs
+        return qs.order_by('-created_at', '-id')
 
     @action(detail=True, methods=['post'])
     def decide(self, request, pk=None):

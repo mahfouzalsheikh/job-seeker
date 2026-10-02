@@ -39,6 +39,7 @@ from .models import (
     ProfileFact,
     Resume,
 )
+from .domain.profiles import authoritative_facts
 
 
 class _ReadableHTMLParser(HTMLParser):
@@ -357,7 +358,7 @@ def create_tailored_resume(owner, *, job: JobPosting, canonical: Resume | None =
             content_markdown='',
             content_json={},
         )
-    facts = list(ProfileFact.objects.filter(owner=owner).order_by('-verified_by_user', 'fact_type', 'title')[:120])
+    facts = list(authoritative_facts(owner).order_by('-verified_by_user', 'fact_type', 'title')[:120])
     profile = getattr(owner, 'candidate_profile', None)
     result = tailor_resume(
         canonical_markdown=canonical.content_markdown,

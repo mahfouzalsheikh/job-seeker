@@ -101,6 +101,28 @@ services:
       - ./data:/app/data
     restart: unless-stopped
 
+  # Started on demand by an MCP client with `docker compose run --rm -i mcp`.
+  # It deliberately has no network listener: MCP traffic is stdin/stdout only.
+  mcp:
+    image: forth:latest
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *backend_env
+      FORTH_MCP_OWNER_EMAIL: ${FORTH_MCP_OWNER_EMAIL:-}
+      FORTH_MCP_OWNER_ID: ${FORTH_MCP_OWNER_ID:-}
+    secrets:
+      - openai_api_key
+    volumes:
+      - ./data:/app/data
+      # Keeps local MCP changes available without rebuilding the web image.
+      - ./backend/mcp_server.py:/app/backend/mcp_server.py:ro
+    entrypoint: ["python", "mcp_server.py"]
+    stdin_open: true
+
   nginx:
     image: nginx:1.27-alpine
     depends_on:

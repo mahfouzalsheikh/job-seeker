@@ -5,6 +5,7 @@ import re
 import uuid
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from pgvector.django import HalfVectorField
 
@@ -47,6 +48,12 @@ class CandidateProfile(models.Model):
     employment_types = models.JSONField(default=list, blank=True)
     minimum_compensation = models.PositiveIntegerField(null=True, blank=True)
     compensation_currency = models.CharField(max_length=8, default='CAD')
+    # Raw evidence score required before Forth treats a role as ready to apply.
+    # The UI presents a calibrated companion score alongside this value.
+    minimum_match_score = models.PositiveSmallIntegerField(
+        default=50,
+        validators=[MinValueValidator(1), MaxValueValidator(99)],
+    )
     excluded_companies = models.JSONField(default=list, blank=True)
     completeness = models.PositiveSmallIntegerField(default=0)
     last_reviewed_at = models.DateTimeField(null=True, blank=True)

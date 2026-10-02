@@ -41,7 +41,7 @@ import { ApiService } from '../services/api.service';
               <strong>{{ match.title }}</strong>
               <p>{{ match.company || 'Unknown company' }}</p>
             </div>
-            <span class="fit-score">{{ match.score }}<small>fit</small></span>
+            <span class="fit-score" [class.high]="match.meets_profile_threshold">{{ match.normalized_score || match.score }}<small>calibrated · {{ match.score }} raw</small></span>
           </div>
           <div class="empty-state small" *ngIf="!(data?.top_matches || []).length"><span class="empty-icon">◇</span><h3>No matches yet</h3><p>Import jobs to unlock fit insights.</p></div>
         </section>

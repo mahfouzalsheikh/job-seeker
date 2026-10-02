@@ -77,7 +77,7 @@ class AgenticWorkflowTests(TestCase):
         self.assertTrue(match.supporting_facts)
         self.assertIn('score_version', match.explanation_json)
         self.assertTrue(match.signals.filter(kind='semantic').exists())
-        self.assertEqual(match.explanation_json['score_version'], '2026-08-v3-pgvector')
+        self.assertEqual(match.explanation_json['score_version'], '2026-10-v4-capability-aware')
 
     def test_document_workflow_waits_for_approval_then_prepares_materials(self):
         run = create_concierge_run(self.user, message='Prepare my strongest opportunity')

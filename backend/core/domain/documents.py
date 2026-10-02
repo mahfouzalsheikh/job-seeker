@@ -13,6 +13,7 @@ from django.db import transaction
 
 from core.ai import clean_text, generate_json, keywords
 from core.models import Application, Artifact, CoverLetter, JobPosting, ProfileFact, Resume, ResumeClaim
+from core.domain.profiles import authoritative_facts
 from core.services import create_tailored_resume
 
 
@@ -188,7 +189,7 @@ def validate_resume_claims(resume: Resume, facts: list[ProfileFact]) -> dict[str
 
 @transaction.atomic
 def prepare_application_materials(owner, job: JobPosting, *, application: Application | None = None) -> dict[str, Any]:
-    facts = list(ProfileFact.objects.filter(owner=owner).order_by('-verified_by_user', 'fact_type', 'title')[:160])
+    facts = list(authoritative_facts(owner).order_by('-verified_by_user', 'fact_type', 'title')[:160])
     resume = create_tailored_resume(owner, job=job)
     validate_resume_claims(resume, facts)
     result = _cover_letter_result(job, facts)
